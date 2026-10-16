@@ -6,6 +6,39 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+const RPC_URL = "https://studio.genlayer.com/api";
+
+async function waitReceiptWithRetry(hash, maxRetries = 60, intervalMs = 3000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'eth_getTransactionByHash',
+          params: [hash],
+        }),
+      });
+      const text = await res.text();
+      try {
+        const json = JSON.parse(text);
+        const tx = json.result;
+        if (tx && (tx.status === 'ACCEPTED' || tx.status === 'FINALIZED')) {
+          return tx;
+        }
+      } catch (parseErr) {
+        // HTML error (502/504), ignore and retry
+      }
+    } catch (e) {
+      // network glitch, ignore and retry
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Timeout waiting for tx receipt: ${hash}`);
+}
+
 async function main() {
   const account = createAccount();
   console.log("Using throwaway account for deployment:", account.address);
@@ -36,15 +69,11 @@ async function main() {
   });
   console.log("SourceDriftLedger Deploy Tx Hash:", ledgerDeployTxHash);
 
-  const ledgerReceipt = await client.waitForTransactionReceipt({
-    hash: ledgerDeployTxHash,
-    retries: 120,
-    interval: 3000,
-  });
+  const ledgerTx = await waitReceiptWithRetry(ledgerDeployTxHash);
   const ledgerElapsed = ((Date.now() - t0) / 1000).toFixed(2);
   console.log(`SourceDriftLedger deployed in ${ledgerElapsed}s`);
-  console.log("Status:", ledgerReceipt.status_name, "Result:", ledgerReceipt.result_name);
-  const ledgerAddress = ledgerReceipt.recipient;
+  console.log("Status:", ledgerTx.status, "Result:", ledgerTx.result_name);
+  const ledgerAddress = ledgerTx.recipient;
   console.log("SourceDriftLedger Address:", ledgerAddress);
 
   if (!ledgerAddress) {
@@ -62,15 +91,11 @@ async function main() {
   });
   console.log("ClaimsBoard Deploy Tx Hash:", boardDeployTxHash);
 
-  const boardReceipt = await client.waitForTransactionReceipt({
-    hash: boardDeployTxHash,
-    retries: 120,
-    interval: 3000,
-  });
+  const boardTx = await waitReceiptWithRetry(boardDeployTxHash);
   const boardElapsed = ((Date.now() - t1) / 1000).toFixed(2);
   console.log(`ClaimsBoard deployed in ${boardElapsed}s`);
-  console.log("Status:", boardReceipt.status_name, "Result:", boardReceipt.result_name);
-  const boardAddress = boardReceipt.recipient;
+  console.log("Status:", boardTx.status, "Result:", boardTx.result_name);
+  const boardAddress = boardTx.recipient;
   console.log("ClaimsBoard Address:", boardAddress);
 
   if (!boardAddress) {
@@ -88,12 +113,8 @@ async function main() {
   });
   console.log("set_ledger Tx Hash:", setLedgerTxHash);
 
-  const setLedgerReceipt = await client.waitForTransactionReceipt({
-    hash: setLedgerTxHash,
-    retries: 120,
-    interval: 3000,
-  });
-  console.log("set_ledger Status:", setLedgerReceipt.status_name, "Result:", setLedgerReceipt.result_name);
+  const setLedgerTx = await waitReceiptWithRetry(setLedgerTxHash);
+  console.log("set_ledger Status:", setLedgerTx.status, "Result:", setLedgerTx.result_name);
 
   // Read back configured ledger address from ClaimsBoard
   const configuredLedger = await client.readContract({
@@ -103,42 +124,61 @@ async function main() {
   });
   console.log("Verified configured ledger on ClaimsBoard:", configuredLedger);
 
+  const outDir = path.join(__dirname);
+  const outPath = path.join(outDir, 'deployments.json');
+  let superseded = [];
+  if (fs.existsSync(outPath)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+      superseded = prev.supersededDeployments || [];
+      if (prev.ledger && prev.claimsBoard) {
+        superseded.push({
+          archivedAt: new Date().toISOString(),
+          version: prev.ledger.contractAddress === "0x0d24CC10b5396C718c019E239c90c7eE6b17BE57" ? "1.0.0" : "1.1.0-pre",
+          reason: "Superseded by v1.1.0 (consensus payload, model-layer evidence, and spawn_sandbox fixes)",
+          ledger: prev.ledger,
+          claimsBoard: prev.claimsBoard,
+        });
+      }
+    } catch (e) {
+      console.warn("Could not read previous deployments.json:", e);
+    }
+  }
+
   const deployments = {
     network: "GenLayer Studionet (Preview)",
     chainId: 61999,
-    rpc: "https://studio.genlayer.com/api",
+    rpc: RPC_URL,
     explorerBase: "https://explorer-studio.genlayer.com",
     deployerAddress: account.address,
     ledger: {
       contractAddress: ledgerAddress,
       deployTxHash: ledgerDeployTxHash,
-      deployStatus: ledgerReceipt.status_name,
-      consensusResult: ledgerReceipt.result_name,
+      deployStatus: ledgerTx.status,
+      consensusResult: ledgerTx.result_name,
       sourceFile: "contracts/SourceDriftLedger.py",
       sourceSha256: ledgerSha256,
       explorerUrl: `https://explorer-studio.genlayer.com/address/${ledgerAddress}`,
-      consensus_data: ledgerReceipt.consensus_data,
+      consensus_data: ledgerTx.consensus_data,
     },
     claimsBoard: {
       contractAddress: boardAddress,
       deployTxHash: boardDeployTxHash,
-      deployStatus: boardReceipt.status_name,
-      consensusResult: boardReceipt.result_name,
+      deployStatus: boardTx.status,
+      consensusResult: boardTx.result_name,
       sourceFile: "contracts/ClaimsBoard.py",
       sourceSha256: boardSha256,
       explorerUrl: `https://explorer-studio.genlayer.com/address/${boardAddress}`,
       setLedgerTxHash: setLedgerTxHash,
-      setLedgerStatus: setLedgerReceipt.status_name,
-      consensus_data: boardReceipt.consensus_data,
+      setLedgerStatus: setLedgerTx.status,
+      consensus_data: boardTx.consensus_data,
     },
-    supersededDeployments: []
+    supersededDeployments: superseded,
   };
 
-  const outDir = path.join(__dirname);
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
   }
-  const outPath = path.join(outDir, 'deployments.json');
   fs.writeFileSync(outPath, JSON.stringify(deployments, null, 2));
   console.log(`\nDeployment records saved to ${outPath}`);
 }

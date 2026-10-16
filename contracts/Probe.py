@@ -36,6 +36,20 @@ class Probe(gl.Contract):
         self.last_probe_result = str(res)
 
     @gl.public.write
+    def test_run_nondet_unsafe(self, val: str) -> None:
+        def leader() -> str:
+            return "LEADER|" + str(val)
+
+        def validator(leaders_res: gl.vm.Result) -> bool:
+            if not isinstance(leaders_res, gl.vm.Return):
+                return False
+            data = str(leaders_res.calldata)
+            return data.startswith("LEADER|")
+
+        res = gl.vm.run_nondet_unsafe(leader, validator)
+        self.last_probe_result = str(res)
+
+    @gl.public.write
     def probe_fetch(self, url: str) -> None:
         def fetch_eval() -> str:
             render_text = ""

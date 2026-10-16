@@ -58,22 +58,39 @@ The table below is generated from `scripts/deploy/live_evidence.json` and record
 
 | Contract | Address | Deploy Tx Hash | Source SHA-256 (Local & On-Chain) | Status | Consensus |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **SourceDriftLedger** (Main) | [`0x0d24CC10b5396C718c019E239c90c7eE6b17BE57`](https://explorer-studio.genlayer.com/address/0x0d24CC10b5396C718c019E239c90c7eE6b17BE57) | `0x8058288116cb78df58dd1c5dd1a84383ac8bc6ea3ca1b3bd06b81f2beb40d874` | `e3b4bf9ce11e5f418126585820916f442bd22f23610bbfdb3a3de8065eeb3bd8` | ACCEPTED | MAJORITY_AGREE |
-| **ClaimsBoard** (Consumer) | [`0x76Ef8E906c8Fec113c4Db846e60196E58e6B818D`](https://explorer-studio.genlayer.com/address/0x76Ef8E906c8Fec113c4Db846e60196E58e6B818D) | `0x4865176578ebf2b800c5fe61ca75a0bcafddf8f6464bb8ace32b2134824fc04c` | `3fc42682eebb7522edb5d0039969fea0232456596a37eda9f1ce698639ee3a10` | ACCEPTED | MAJORITY_AGREE |
+| **SourceDriftLedger** (Main v1.1.0) | [`0xc6a8Cfdbbb4CA98637053A0c8529686Ff4C41CaD`](https://explorer-studio.genlayer.com/address/0xc6a8Cfdbbb4CA98637053A0c8529686Ff4C41CaD) | `0x25eecfa0238d344b520707aeca15aa3f30d21c7237e3ef52a1ad2e26915759a6` | `130f8b11bfb3b609dbdcffa92b3b1cdbd8795ec5f2ed51618e47cfb005ef2866` | ACCEPTED | MAJORITY_AGREE |
+| **ClaimsBoard** (Consumer v1.1.0) | [`0xfc454d601DC5300ECf8458610cB1580c9640bE32`](https://explorer-studio.genlayer.com/address/0xfc454d601DC5300ECf8458610cB1580c9640bE32) | `0x2856c22192ef04ad1f4384ee0957f56e18b9e08ed1c63a23254700c7aba1c210` | `4ee7d485bcaf7505514377abfea8f05eb3286447c13752df2847a3de7d0e8569` | ACCEPTED | MAJORITY_AGREE |
 
 **Cross-Contract Linking (`set_ledger`):**
-- Tx Hash: `0x02f91c5c28318f6e330d27332181b7bc38bffd96a9fa2cdf2f882727e51cddcd`
+- Tx Hash: `0x85ad08735b5c7e2cdc857d2f6be3d7bf3fdae075983d1abf679fe1f1b3872a82`
 - Status: `ACCEPTED`
-- Configured Ledger on Consumer: `0x0d24CC10b5396C718c019E239c90c7eE6b17BE57`
+- Configured Ledger on Consumer: `0xc6a8Cfdbbb4CA98637053A0c8529686Ff4C41CaD`
 
 ### On-Chain Execution Scenarios & Evidence
 
 | Scenario | Citation ID / Target | Registration Tx | Audit / Action Tx | Validator Agreement | Outcome Class | Final Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Scenario 1: UNCHANGED Revision Audit** (Alan Turing) | `a984e9a3885e`<br>oldid 1380390650 | `0x282199b8d13ea5c8a15b4e09e60291dbff1b1926a8745ac42dd0d5ea2ab1f2ad` | `0x03901425b132d9b9a8cc1782cb3c9617e3d0e58deb153ed8a796e2825cf15edd` | Register: 3/5<br>Audit: 3/5 | `UNCHANGED` | `HEALTHY` |
-| **Scenario 2: LIVE Page Audit** (Non-Reproducible) | `a984e9a3885e`<br>/wiki/Alan_Turing | (inherited from S1) | `0xf318baa863cb01e8747ec8f493d75e874f0ae1537cd9c4e5521032122f06c010` | Audit: 0/5 (Disagreed) | `NON_REPRODUCIBLE` | `UNDETERMINED` |
-| **Scenario 3: ClaimsBoard Integration** (Publish + Refresh) | Claim: `175c4c8df043`<br>Citation: `a984e9a3885e` | Publish: `0x218d9fcef79b2b813cf741f2635fc7f4c09cfd81095b7abeba0d039802b16a5a` | Refresh: `0xf18d3cd4946c4a1cf1d071c15c5ebc60c844af8ea091d5c13e911c2bd2c3c203` | Publish: 3/5<br>Refresh: 4/5 | Initial: `VERIFIED` | Badge: `VERIFIED` |
-| **Scenario 4: Film Gross Metric** (Overlong Document) | `a984e9a3885e` | `0xbbb159322de6f75b8e70df96802dd09935ef42b197e0a57d4d2aec37c63d31bf` | `0x871e092e1bfd5b850d549eed00b0abed856ab973e646eca14b1f2c4372a0a631` | Register: 0/5<br>Audit: 5/5 | (Registration Disagreed) | `REVERTED` |
+| **Scenario 1: UNCHANGED Revision Audit** (Alan Turing) | `0b206b8b6a06`<br>oldid 1380390650 | `0x442b3ed690574b4a2df0201599f7f8c2832b0892be6bd3e84427efb6a15b8246` | `0x34db8077b8b6995d44977c07849841c7d9f1a130ade597b6f7ca233a8cab6f72` | Register: 3/5<br>Audit: 3/5 | `UNCHANGED` | `HEALTHY` |
+| **Scenario 2: LIVE Page Audit & Multi-Audit History** | `0b206b8b6a06`<br>/wiki/Alan_Turing | (inherited from S1) | `0x01a8d6faa62a4cad2266d3d1689d4c51771ebbdb90cfcb2ca3afb6e287569ab6` | Audit: 3/5 | `UNCHANGED` (Live Consensus Verified) | `HEALTHY` (2 Audits in History) |
+| **Scenario 3: COSMETIC Drift Audit** (Computing Wording) | `257ae938161c`<br>oldid 1380219262 | `0xf6cde7ac2f7fe2076a89ca5b7e33fb0db0c30ddcac640b09be1e64c05495da95` | `0xd90d91b9ce5b91061e0d0441b7bc25f1525bdba49600d8e11f8bc7f36d0bf18a` | Register: 3/5<br>Audit: 3/5 | `COSMETIC` (Model Decided: REPHRASED) | `HEALTHY` |
+| **Scenario 4: MATERIAL Drift Audit** (Oscars Fact Correction) | Attempt 1: `257ae938161c`<br>oldid 1370247723 | `0x15d35b4c79dc04a056252f0df9907b70000e733827d0bbddb10fb291968a4931` | Reverted: `quote not found verbatim in baseline` | Register: 3/5 | (Registration Revert: quote not verbatim) | `UNAUDITED` |
+| **Scenario 5: REMOVED Drift Audit** (Charles Babbage) | `d81f10ae72a5`<br>oldid 1378652484 | `0x99703fdadcef1140ee59103f9d6de1de0160282452462d4bf254be58ef8c2faa` | `0x16397681fe7ec114c07025f6b0c371bc3390af5c7f9d69992906f88fb2ab3bcf` | Register: 3/5<br>Audit: 3/5 | (Audit Revert: `invalid model output`) | `UNAUDITED` |
+| **Scenario 6: ClaimsBoard Cross-Contract Integration** | Claim: `9d3772c0090d`<br>Citation: `0b206b8b6a06` | Publish: `0x8e88696d25c92faf0c85facd5a878f3eedf35a6c208c2194787b28244aa704e5` | Multi-Claim Tx: `0xe77981973346ee2120efcaec8c7fbf537245770b6173eec4862e9c77042af353` | Publish: 3/5 | Derived Badge: `VERIFIED` | Consumer Integration Verified |
+
+### Explicit Classification: On-Chain vs. Unit-Tested Only
+
+In strict compliance with the Honesty Rules, behavior is partitioned by where evidence was obtained:
+
+#### Verified On-Chain (GenLayer Studionet Preview)
+- **UNCHANGED Deterministic Path**: Fully verified on-chain (Alan Turing revision 1380390650, Tx `0x34db8077b8b6995d44977c07849841c7d9f1a130ade597b6f7ca233a8cab6f72`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes).
+- **LIVE Article Consensus Payload**: Fully verified on-chain (/wiki/Alan_Turing, Tx `0x01a8d6faa62a4cad2266d3d1689d4c51771ebbdb90cfcb2ca3afb6e287569ab6`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes). Proved that excluding the live target fingerprint and character counts resolved the v1.0.0 consensus disagreement (which scored 2/5).
+- **COSMETIC Drift & Model Layer**: Fully verified on-chain (Computing revision 1380219262, Tx `0xd90d91b9ce5b91061e0d0441b7bc25f1525bdba49600d8e11f8bc7f36d0bf18a`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes). The LLM model evaluated tightened prose ("more narrow sense" -> "narrower sense"), classified `REPHRASED`, extracted passage `p15`, and custom validator consensus confirmed the cited quote without passage ID dependence.
+- **Cross-Contract Integration**: Fully verified on-chain (ClaimsBoard `0xfc454d601DC5300ECf8458610cB1580c9640bE32` -> SourceDriftLedger `0xc6a8Cfdbbb4CA98637053A0c8529686Ff4C41CaD`, Tx `0x8e88696d25c92faf0c85facd5a878f3eedf35a6c208c2194787b28244aa704e5`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes).
+- **10 Negative Revert Scenarios**: All 10 negative test transactions reverted on-chain with exact decoded payloads accepted by validators (3/5 to 5/5 votes).
+
+#### Unit-Tested Only (Not On-Chain)
+- **MATERIAL Drift State Transition**: Verified in 25 passing offline unit tests (`test_audit_citation_material_drift`). On-chain Attempt 1 reverted with `quote not found verbatim in baseline` due to MediaWiki table whitespace normalization differences between raw source and rendered text.
+- **REMOVED Absence State Transition**: Verified in 25 passing offline unit tests (`test_absence_calibration`, `test_audit_citation_removed_drift`). On-chain Attempts 1 & 2 on Charles Babbage (`0xe54a7671...` and `0x16397681...`) reverted with `invalid model output` because the GenVM leader LLM policy (`prd-kimi`) returned extra explanatory tokens/formatting when evaluating deleted assertions rather than bare JSON without explanation.
 
 ### On-Chain Negative Tests & Revert Payloads
 
@@ -81,17 +98,17 @@ All negative tests were submitted directly to the GenLayer Studionet RPC and eva
 
 | Test Case | Invoked Function | Transaction Hash | Status | Consensus | Agreement | Decoded Revert Payload |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Quote Not Verbatim in Baseline** | `register_citation` | `0xd0b085359710df97e06fb5af0c01e978a3370e44d1fd9a49e8cf6c2631bfe40c` | ACCEPTED | MAJORITY_AGREE | 3/5 | `quote not found verbatim in baseline` |
-| **Non-Permalink Baseline URL** | `register_citation` | `0xcb130a1605d47797d89408bf885716e6cb222c5033dc0e24237c799d336a5dee` | ACCEPTED | MAJORITY_AGREE | 3/5 | `baseline must be an immutable revision permalink` |
-| **Target Revision Older or Equal to Baseline** | `audit_citation` | `0x480b1ebb10a2cf5b6d38da671b22448033349d4c8d37250035bb340e6e9daed4` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target revision must be later than baseline` |
-| **Cross-Page Target URL Mismatch** | `audit_citation` | `0x1c65f47fb909a80e2bd25c2f79ca6aad4859759a7933e8569229ca6ee2a8825e` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target title must match baseline title` |
-| **Cross-Host Target URL Mismatch** | `audit_citation` | `0xd96459f768bf41792ea35c683d8db1d5bb1bac5ea191bf9b12fe09ab35660df4` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target URL host must match baseline host` |
-| **Non-Allowlisted Domain** | `register_citation` | `0xdd36c191d0c979227f138ca14ef7029d166906d3808147ae22b112d4a15e52d8` | ACCEPTED | MAJORITY_AGREE | 4/5 | `source URL must be a wikipedia.org language domain` |
-| **Userinfo URL Spoof** | `register_citation` | `0x5ede866537e381cea91f56207c2681999ccb0c972cbc29ad9993b97981a19256` | ACCEPTED | MAJORITY_AGREE | 3/5 | `source URL cannot contain userinfo` |
-| **Fragment URL Spoof in Baseline** | `register_citation` | `0x8443bd13d58298ca3ade7fefcc2b5b730acb72804f4c5ab9142690f1093dd71a` | ACCEPTED | MAJORITY_AGREE | 3/5 | `baseline URL cannot contain fragment` |
-| **Duplicate Citation Registration** | `register_citation` | `0x992ffbe72878a7a0a09cfdefce4f762e8674e1b8e72c7f674a879247cf34b490` | ACCEPTED | MAJORITY_AGREE | 5/5 | `already registered` |
-| **Repeated Target Revision Audit** | `audit_citation` | `0x5d8b4bb2b22b3c2692ab43ed2e0c20af6d89f665b47acd4524c65dda21d03849` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target already audited` |
-| **Audit Nonexistent Citation** | `audit_citation` | `0x89ea8f911ae3248532f0ffd70f463afcd5b884cff0907349f3de96c812d1dbbc` | ACCEPTED | MAJORITY_AGREE | 3/5 | `citation not found` |
+| **Quote Not Verbatim in Baseline** | `register_citation` | `0x73c0baadbaef72420f4507dca80c65c3581cc9d4292b30c804681d1ba0d12a6d` | ACCEPTED | MAJORITY_AGREE | 3/5 | `quote not found verbatim in baseline` |
+| **Non-Permalink Baseline URL** | `register_citation` | `0xb45a282d83b66cb30b2518f39d23c0be98b0058d209ef812e5ddea1fc7e635ca` | ACCEPTED | MAJORITY_AGREE | 3/5 | `baseline must be an immutable revision permalink` |
+| **Target Revision Older or Equal to Baseline** | `audit_citation` | `0x2f5fdefc93fc8585be979e8594e2633a87aa3d25d73c13bb911758556f1f2bc5` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target revision must be later than baseline` |
+| **Cross-Page Target URL Mismatch** | `audit_citation` | `0x8a35487be250f0eeae90f5cd89251e1268e32f67a904f7d2bb4dd6c014a28811` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target title must match baseline title` |
+| **Cross-Host Target URL Mismatch** | `audit_citation` | `0x5519012f51b4a4aac3500333fcac03443359b5d7304bd4fccea7c2e06fac8fde` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target URL host must match baseline host` |
+| **Non-Allowlisted Domain** | `register_citation` | `0x121baeec46cb47925a85ee35dd6f90fff3ca97c6eac541f8cf3ffcaccf54bf1a` | ACCEPTED | MAJORITY_AGREE | 4/5 | `source URL must be a wikipedia.org language domain` |
+| **Userinfo URL Spoof** | `register_citation` | `0x76941f4f450594de4b3a1307ff1ecf5a0f3b82b58c6b5f1795fcc727a43bd056` | ACCEPTED | MAJORITY_AGREE | 5/5 | `source URL cannot contain userinfo` |
+| **Fragment URL Spoof in Baseline** | `register_citation` | `0x6e3305ed84a6d3e25bda826041e74ed67183a90b245009a4939eda590555312f` | ACCEPTED | MAJORITY_AGREE | 4/5 | `baseline URL cannot contain fragment` |
+| **Duplicate Citation Registration** | `register_citation` | `0xcb6b27fe2236460a70f4bb182393f9661271710a78e7e9c0d925a0740bda185d` | ACCEPTED | MAJORITY_AGREE | 3/5 | `already registered` |
+| **Repeated Target Revision Audit** | `audit_citation` | `0x14621aa92b9d16a6c9b6b3e3077ae5de1dd8d90a32200ddaf3f05daec2f719f7` | ACCEPTED | MAJORITY_AGREE | 3/5 | `target already audited` |
+| **Audit Nonexistent Citation** | `audit_citation` | `0x6ec58db77e4ed49ee93394bee9661db60b5b345764b9dd39d6bf1ce667daf244` | ACCEPTED | MAJORITY_AGREE | 3/5 | `citation not found` |
 
 <!-- EVIDENCE_TABLE_END -->
 

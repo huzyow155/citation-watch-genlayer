@@ -7,8 +7,8 @@ This guide specifies all public methods, parameter formats, JSON return shapes, 
 - **Chain ID**: `61999`
 - **RPC Endpoint**: `https://studio.genlayer.com/api`
 - **Explorer**: `https://explorer-studio.genlayer.com`
-- **SourceDriftLedger Address**: `0x0d24CC10b5396C718c019E239c90c7eE6b17BE57`
-- **ClaimsBoard Address**: `0x76Ef8E906c8Fec113c4Db846e60196E58e6B818D`
+- **SourceDriftLedger Address**: `0xc6a8Cfdbbb4CA98637053A0c8529686Ff4C41CaD`
+- **ClaimsBoard Address**: `0xfc454d601DC5300ECf8458610cB1580c9640bE32`
 
 ---
 

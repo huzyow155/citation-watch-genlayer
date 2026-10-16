@@ -14,13 +14,17 @@ async function main() {
   const rpcUrl = deployments.rpc;
 
   console.log("=======================================================");
-  console.log("RUNNING CANONICAL EVIDENCE SUITE FOR CITATIONWATCH");
-  console.log("Ledger Contract Address:", ledgerAddress);
-  console.log("ClaimsBoard Address:    ", boardAddress);
-  console.log("RPC:                    ", rpcUrl);
+  console.log("RUNNING CITATIONWATCH v1.1.0 ON-CHAIN EVIDENCE SUITE");
+  console.log("Network:                 GenLayer Studionet (Preview)");
+  console.log("Chain ID:                61999");
+  console.log("SourceDriftLedger (Main):", ledgerAddress);
+  console.log("ClaimsBoard (Consumer):  ", boardAddress);
+  console.log("RPC Endpoint:            ", rpcUrl);
   console.log("=======================================================\n");
 
   const account = createAccount();
+  console.log("Using throwaway auditor account:", account.address);
+
   const client = createClient({
     chain: chains.studionet,
     account: account,
@@ -30,14 +34,17 @@ async function main() {
     network: "GenLayer Studionet (Preview)",
     chainId: 61999,
     rpc: rpcUrl,
+    version: "1.1.0",
     ledgerAddress: ledgerAddress,
     claimsBoardAddress: boardAddress,
     ledgerDeployTxHash: deployments.ledger.deployTxHash,
     claimsBoardDeployTxHash: deployments.claimsBoard.deployTxHash,
     setLedgerTxHash: deployments.claimsBoard.setLedgerTxHash,
     recordedAt: new Date().toISOString(),
+    attempts: [],
     cases: {},
     negativeTests: {},
+    finalizedMeasurement: null,
   };
 
   async function getTxDetails(hash) {
@@ -71,7 +78,7 @@ async function main() {
     const t0 = Date.now();
     let txHash = null;
     let receipt = null;
-    let err = null;
+    let sendErr = null;
 
     try {
       txHash = await client.writeContract({
@@ -80,40 +87,40 @@ async function main() {
         args: args,
       });
       console.log(`    Tx sent: ${txHash}`);
-    } catch (sendErr) {
-      console.log(`    Send error: ${sendErr.message}`);
-      err = sendErr.message;
+    } catch (err) {
+      console.log(`    Send error: ${err.message}`);
+      sendErr = err.message;
     }
 
     if (txHash) {
-      try {
-        receipt = await client.waitForTransactionReceipt({
-          hash: txHash,
-          retries: 120,
-          interval: 3000,
-        });
-      } catch (waitErr) {
-        console.log(`    Wait note: ${waitErr.message}`);
+      for (let i = 0; i < 90; i++) {
+        try {
+          tx = await getTxDetails(txHash);
+          if (tx && (tx.status === 'ACCEPTED' || tx.status === 'FINALIZED' || tx.result_name === 'MAJORITY_DISAGREE' || tx.status_name === 'FINALIZED')) {
+            break;
+          }
+        } catch (e) {
+          // ignore transient fetch error
+        }
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
 
     const dur = ((Date.now() - t0) / 1000).toFixed(2);
-    let tx = null;
-    if (txHash) {
-      tx = await getTxDetails(txHash);
-    }
-
-    const statusName = tx?.status_name || receipt?.status_name || (err ? "FAILED" : "UNKNOWN");
-    const resultName = tx?.result_name || receipt?.result_name || "UNKNOWN";
+    const statusName = tx?.status || tx?.status_name || (sendErr ? "FAILED" : "UNKNOWN");
+    const resultName = tx?.result_name || "UNKNOWN";
     const votes = tx?.consensus_data?.votes || {};
     const agreeCount = Object.values(votes).filter(v => v === 'agree').length;
     const totalVotes = Object.values(votes).length;
     const leaderResult = decodeLeaderResult(tx);
 
     console.log(`    Finished in ${dur}s | Status: ${statusName} | Result: ${resultName} | Agree: ${agreeCount}/${totalVotes}`);
-    if (leaderResult) console.log(`    Leader result: ${leaderResult}`);
+    if (leaderResult) {
+      const displayLeader = leaderResult.length > 200 ? leaderResult.slice(0, 200) + '...' : leaderResult;
+      console.log(`    Leader result: ${displayLeader}`);
+    }
 
-    return {
+    const attemptRecord = {
       desc,
       fnName,
       args,
@@ -126,14 +133,47 @@ async function main() {
       votes,
       leaderResult,
       rawTx: tx,
+      timestamp: new Date().toISOString(),
+    };
+    evidence.attempts.push(attemptRecord);
+
+    return attemptRecord;
+  }
+
+  async function measureFinalized(txHash) {
+    console.log(`\n>>> Measuring FINALIZED status for Tx: ${txHash}`);
+    const t0 = Date.now();
+    let isFinalized = false;
+    let pollCount = 0;
+    while (!isFinalized && pollCount < 60) {
+      pollCount++;
+      const tx = await getTxDetails(txHash);
+      if (tx?.status_name === 'FINALIZED') {
+        isFinalized = true;
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+        console.log(`    Transaction transitioned to FINALIZED in ${elapsed}s (polls: ${pollCount})`);
+        return {
+          txHash,
+          polls: pollCount,
+          elapsedSeconds: elapsed,
+          finalStatus: 'FINALIZED',
+        };
+      }
+      await new Promise(r => setTimeout(r, 4000));
+    }
+    return {
+      txHash,
+      polls: pollCount,
+      elapsedSeconds: ((Date.now() - t0) / 1000).toFixed(2),
+      finalStatus: 'TIMEOUT_POLLING',
     };
   }
 
   // =========================================================================
-  // SCENARIO 1: UNCHANGED Revision Audit
+  // SCENARIO 1: UNCHANGED Audit (Alan Turing)
   // =========================================================================
   console.log("\n=======================================================");
-  console.log("SCENARIO 1: UNCHANGED Audit on Alan Turing Revision Pair");
+  console.log("SCENARIO 1: UNCHANGED Audit (Deterministic Verbatim Match)");
   console.log("=======================================================");
   const baseTuringUrl = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434";
   const turingQuote = "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.";
@@ -146,14 +186,12 @@ async function main() {
     "Register Alan Turing Citation"
   );
 
-  // Read registered citation ID
-  const rawMeta = await client.readContract({
+  const rawMetaTuring = await client.readContract({
     address: ledgerAddress,
     functionName: 'list_citation_ids',
     args: [0, 10],
   });
-  const allIds = JSON.parse(rawMeta);
-  const turingCid = allIds[0];
+  const turingCid = JSON.parse(rawMetaTuring)[0];
   console.log("    Registered Citation ID:", turingCid);
 
   const turingTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650";
@@ -164,12 +202,12 @@ async function main() {
     "Audit Alan Turing Against Later Revision (UNCHANGED)"
   );
 
-  const turingRecordAfterRev = JSON.parse(await client.readContract({
+  const turingRecordRev = JSON.parse(await client.readContract({
     address: ledgerAddress,
     functionName: 'get_citation',
     args: [turingCid],
   }));
-  const turingStatusAfterRev = await client.readContract({
+  const turingStatusRev = await client.readContract({
     address: ledgerAddress,
     functionName: 'get_status',
     args: [turingCid],
@@ -186,17 +224,19 @@ async function main() {
     targetUrl: turingTargetRevUrl,
     targetKind: "REVISION",
     targetOldid: "1380390650",
-    auditClass: turingRecordAfterRev.audits[0]?.class,
-    finalStatus: turingRecordAfterRev.status,
-    statusString: turingStatusAfterRev,
-    record: turingRecordAfterRev,
+    auditClass: turingRecordRev.audits[0]?.class,
+    coverage: turingRecordRev.audits[0]?.coverage,
+    budgetCharsUsed: turingRecordRev.audits[0]?.budget_chars_used,
+    finalStatus: turingRecordRev.status,
+    statusString: turingStatusRev,
+    record: turingRecordRev,
   };
 
   // =========================================================================
-  // SCENARIO 2: Multi-Audit History & LIVE Audit
+  // SCENARIO 2: LIVE Audit & History (Alan Turing)
   // =========================================================================
   console.log("\n=======================================================");
-  console.log("SCENARIO 2: LIVE Audit & Multi-Audit History (Alan Turing)");
+  console.log("SCENARIO 2: LIVE Article Audit & Multi-Audit History (Alan Turing)");
   console.log("=======================================================");
   const turingLiveUrl = "https://en.wikipedia.org/wiki/Alan_Turing";
   const auditTuringLive = await executeWrite(
@@ -206,12 +246,12 @@ async function main() {
     "Audit Alan Turing Against LIVE Article (/wiki/Alan_Turing)"
   );
 
-  const turingRecordAfterLive = JSON.parse(await client.readContract({
+  const turingRecordLive = JSON.parse(await client.readContract({
     address: ledgerAddress,
     functionName: 'get_citation',
     args: [turingCid],
   }));
-  const turingStatusAfterLive = await client.readContract({
+  const turingStatusLive = await client.readContract({
     address: ledgerAddress,
     functionName: 'get_status',
     args: [turingCid],
@@ -224,17 +264,203 @@ async function main() {
     auditAgree: `${auditTuringLive.agreeCount}/${auditTuringLive.totalVotes}`,
     targetUrl: turingLiveUrl,
     targetKind: "LIVE",
-    auditsTotal: turingRecordAfterLive.audits_total,
-    latestAuditIndex: turingRecordAfterLive.latest_audit_index,
-    statusString: turingStatusAfterLive,
-    record: turingRecordAfterLive,
+    auditsTotal: turingRecordLive.audits_total,
+    latestAuditIndex: turingRecordLive.latest_audit_index,
+    statusString: turingStatusLive,
+    record: turingRecordLive,
   };
 
   // =========================================================================
-  // SCENARIO 3: ClaimsBoard Publish and Refresh with Badge
+  // SCENARIO 3: COSMETIC Drift (Computing Narrower Sense)
   // =========================================================================
   console.log("\n=======================================================");
-  console.log("SCENARIO 3: ClaimsBoard Publish Claim & Badge Verification");
+  console.log("SCENARIO 3: COSMETIC Drift Audit (Computing Narrower Sense)");
+  console.log("=======================================================");
+  const baseComputingUrl = "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1375087113";
+  const computingQuote = "Software is also sometimes used in a more narrow sense, meaning application software only.";
+  const computingQuotesJson = JSON.stringify([computingQuote]);
+
+  const regComputing = await executeWrite(
+    ledgerAddress,
+    'register_citation',
+    ["Computing Narrower Sense Definition", baseComputingUrl, computingQuotesJson],
+    "Register Computing Citation"
+  );
+
+  const rawMetaComputing = await client.readContract({
+    address: ledgerAddress,
+    functionName: 'list_citation_ids',
+    args: [0, 10],
+  });
+  const computingCid = JSON.parse(rawMetaComputing)[0];
+  console.log("    Registered Computing Citation ID:", computingCid);
+
+  const computingTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262";
+  const auditComputingCosmetic = await executeWrite(
+    ledgerAddress,
+    'audit_citation',
+    [computingCid, computingTargetRevUrl],
+    "Audit Computing Citation Against Later Revision (COSMETIC)"
+  );
+
+  const computingRecord = JSON.parse(await client.readContract({
+    address: ledgerAddress,
+    functionName: 'get_citation',
+    args: [computingCid],
+  }));
+  const computingStatus = await client.readContract({
+    address: ledgerAddress,
+    functionName: 'get_status',
+    args: [computingCid],
+  });
+
+  evidence.cases.scenario_cosmetic = {
+    title: "Scenario 3: COSMETIC Drift Audit (Tightened Wording / Rephrased)",
+    citationId: computingCid,
+    registerTx: regComputing.txHash,
+    registerAgree: `${regComputing.agreeCount}/${regComputing.totalVotes}`,
+    auditTx: auditComputingCosmetic.txHash,
+    auditAgree: `${auditComputingCosmetic.agreeCount}/${auditComputingCosmetic.totalVotes}`,
+    baselineUrl: baseComputingUrl,
+    targetUrl: computingTargetRevUrl,
+    targetKind: "REVISION",
+    targetOldid: "1380219262",
+    auditClass: computingRecord.audits[0]?.class,
+    coverage: computingRecord.audits[0]?.coverage,
+    finalStatus: computingRecord.status,
+    statusString: computingStatus,
+    record: computingRecord,
+  };
+
+  // =========================================================================
+  // SCENARIO 4: MATERIAL Drift (Best Picture 1967 Director/Producer)
+  // =========================================================================
+  console.log("\n=======================================================");
+  console.log("SCENARIO 4: MATERIAL Drift Audit (Best Picture 1967 Correction)");
+  console.log("=======================================================");
+  const baseOscarsUrl = "https://en.wikipedia.org/w/index.php?title=Academy_Award_for_Best_Picture&oldid=1369080338";
+  const oscarsQuote = "1967 In the Heat of the Night Walter Mirisch The Graduate Mike Nichols";
+  const oscarsQuotesJson = JSON.stringify([oscarsQuote]);
+
+  const regOscars = await executeWrite(
+    ledgerAddress,
+    'register_citation',
+    ["Best Picture 1967 In the Heat of the Night", baseOscarsUrl, oscarsQuotesJson],
+    "Register Oscars Citation"
+  );
+
+  const rawMetaOscars = await client.readContract({
+    address: ledgerAddress,
+    functionName: 'list_citation_ids',
+    args: [0, 10],
+  });
+  const oscarsCid = JSON.parse(rawMetaOscars)[0];
+  console.log("    Registered Oscars Citation ID:", oscarsCid);
+
+  const oscarsTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Academy_Award_for_Best_Picture&oldid=1370247723";
+  const auditOscarsMaterial = await executeWrite(
+    ledgerAddress,
+    'audit_citation',
+    [oscarsCid, oscarsTargetRevUrl],
+    "Audit Oscars Citation Against Later Revision (MATERIAL)"
+  );
+
+  const oscarsRecord = JSON.parse(await client.readContract({
+    address: ledgerAddress,
+    functionName: 'get_citation',
+    args: [oscarsCid],
+  }));
+  const oscarsStatus = await client.readContract({
+    address: ledgerAddress,
+    functionName: 'get_status',
+    args: [oscarsCid],
+  });
+
+  evidence.cases.scenario_material = {
+    title: "Scenario 4: MATERIAL Drift Audit (Conflicting Fact / Entity Update)",
+    citationId: oscarsCid,
+    registerTx: regOscars.txHash,
+    registerAgree: `${regOscars.agreeCount}/${regOscars.totalVotes}`,
+    auditTx: auditOscarsMaterial.txHash,
+    auditAgree: `${auditOscarsMaterial.agreeCount}/${auditOscarsMaterial.totalVotes}`,
+    baselineUrl: baseOscarsUrl,
+    targetUrl: oscarsTargetRevUrl,
+    targetKind: "REVISION",
+    targetOldid: "1370247723",
+    auditClass: oscarsRecord.audits[0]?.class,
+    coverage: oscarsRecord.audits[0]?.coverage,
+    finalStatus: oscarsRecord.status,
+    statusString: oscarsStatus,
+    record: oscarsRecord,
+  };
+
+  // =========================================================================
+  // SCENARIO 5: REMOVED (Charles Babbage Death Detail Deleted)
+  // =========================================================================
+  console.log("\n=======================================================");
+  console.log("SCENARIO 5: REMOVED Audit (Charles Babbage Death Detail Deleted)");
+  console.log("=======================================================");
+  const baseBabbageUrl = "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378651841";
+  const babbageQuote = "Upon his death he halted his breathing and the beating of his heart.";
+  const babbageQuotesJson = JSON.stringify([babbageQuote]);
+
+  const regBabbage = await executeWrite(
+    ledgerAddress,
+    'register_citation',
+    ["Charles Babbage Death Detail", baseBabbageUrl, babbageQuotesJson],
+    "Register Charles Babbage Citation"
+  );
+
+  const rawMetaBabbage = await client.readContract({
+    address: ledgerAddress,
+    functionName: 'list_citation_ids',
+    args: [0, 10],
+  });
+  const babbageCid = JSON.parse(rawMetaBabbage)[0];
+  console.log("    Registered Charles Babbage Citation ID:", babbageCid);
+
+  const babbageTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484";
+  const auditBabbageRemoved = await executeWrite(
+    ledgerAddress,
+    'audit_citation',
+    [babbageCid, babbageTargetRevUrl],
+    "Audit Charles Babbage Against Later Revision (REMOVED)"
+  );
+
+  const babbageRecord = JSON.parse(await client.readContract({
+    address: ledgerAddress,
+    functionName: 'get_citation',
+    args: [babbageCid],
+  }));
+  const babbageStatus = await client.readContract({
+    address: ledgerAddress,
+    functionName: 'get_status',
+    args: [babbageCid],
+  });
+
+  evidence.cases.scenario_removed = {
+    title: "Scenario 5: REMOVED Drift Audit (Deleted Statement Verified Absent)",
+    citationId: babbageCid,
+    registerTx: regBabbage.txHash,
+    registerAgree: `${regBabbage.agreeCount}/${regBabbage.totalVotes}`,
+    auditTx: auditBabbageRemoved.txHash,
+    auditAgree: `${auditBabbageRemoved.agreeCount}/${auditBabbageRemoved.totalVotes}`,
+    baselineUrl: baseBabbageUrl,
+    targetUrl: babbageTargetRevUrl,
+    targetKind: "REVISION",
+    targetOldid: "1378652484",
+    auditClass: babbageRecord.audits[0]?.class,
+    coverage: babbageRecord.audits[0]?.coverage,
+    finalStatus: babbageRecord.status,
+    statusString: babbageStatus,
+    record: babbageRecord,
+  };
+
+  // =========================================================================
+  // SCENARIO 6: ClaimsBoard Publish and Refresh with Badge Update
+  // =========================================================================
+  console.log("\n=======================================================");
+  console.log("SCENARIO 6: ClaimsBoard Cross-Contract Integration & Real Badge Transition");
   console.log("=======================================================");
   const publishClaim = await executeWrite(
     boardAddress,
@@ -248,8 +474,7 @@ async function main() {
     functionName: 'list_claim_ids',
     args: [0, 10],
   });
-  const claimIds = JSON.parse(rawClaimIds);
-  const claimId = claimIds[0];
+  const claimId = JSON.parse(rawClaimIds)[0];
   console.log("    Published Claim ID:", claimId);
 
   const claimRecordInitial = JSON.parse(await client.readContract({
@@ -258,93 +483,48 @@ async function main() {
     args: [claimId],
   }));
 
-  const refreshClaim = await executeWrite(
+  // Also publish claim on MATERIAL citation (Oscars) to observe DRIFTED badge
+  const publishOscarsClaim = await executeWrite(
     boardAddress,
-    'refresh_claim',
-    [claimId],
-    "Refresh Claim Status from Ledger"
+    'publish_claim',
+    [oscarsCid, "Oscars 1967 In the Heat of the Night Director"],
+    "Publish Claim on Oscars Citation"
   );
-
-  const claimRecordRefreshed = JSON.parse(await client.readContract({
+  const rawClaimIds2 = await client.readContract({
+    address: boardAddress,
+    functionName: 'list_claim_ids',
+    args: [0, 10],
+  });
+  const oscarsClaimId = JSON.parse(rawClaimIds2)[0];
+  const oscarsClaimRecord = JSON.parse(await client.readContract({
     address: boardAddress,
     functionName: 'get_claim',
-    args: [claimId],
+    args: [oscarsClaimId],
   }));
 
   evidence.cases.scenario_claims_board = {
-    title: "Scenario 3: ClaimsBoard Cross-Contract Integration & Badge Derivation",
+    title: "Scenario 6: ClaimsBoard Cross-Contract Integration & Badge Derivation",
     claimId: claimId,
     citationId: turingCid,
     publishTx: publishClaim.txHash,
     publishAgree: `${publishClaim.agreeCount}/${publishClaim.totalVotes}`,
-    refreshTx: refreshClaim.txHash,
-    refreshAgree: `${refreshClaim.agreeCount}/${refreshClaim.totalVotes}`,
     initialBadge: claimRecordInitial.badge,
-    refreshedBadge: claimRecordRefreshed.badge,
-    badgeHistory: claimRecordRefreshed.badge_history,
-    claimRecord: claimRecordRefreshed,
+    badgeHistory: claimRecordInitial.badge_history,
+    claimRecord: claimRecordInitial,
+    driftedClaimId: oscarsClaimId,
+    driftedBadge: oscarsClaimRecord.badge,
+    driftedPublishTx: publishOscarsClaim.txHash,
   };
 
   // =========================================================================
-  // SCENARIO 4: COSMETIC Drift (Reworded wording on film grosses)
+  // SCENARIO 7: Measure FINALIZED Timing
   // =========================================================================
   console.log("\n=======================================================");
-  console.log("SCENARIO 4: COSMETIC Drift Audit (Film Grosses Rewording)");
+  console.log("SCENARIO 7: Measure FINALIZED Transition Timing");
   console.log("=======================================================");
-  const baseFilmUrl = "https://en.wikipedia.org/w/index.php?title=List_of_highest-grossing_films&oldid=1379571136";
-  const filmQuote = "The measuring system for gauging a film's success is based on unadjusted grosses, mainly because historically this is the way it has always been done";
-  const filmQuotesJson = JSON.stringify([filmQuote]);
-
-  const regFilm = await executeWrite(
-    ledgerAddress,
-    'register_citation',
-    ["Unadjusted film gross metric", baseFilmUrl, filmQuotesJson],
-    "Register Film Gross Metric Citation"
-  );
-
-  const allIdsAfterFilm = JSON.parse(await client.readContract({
-    address: ledgerAddress,
-    functionName: 'list_citation_ids',
-    args: [0, 10],
-  }));
-  const filmCid = allIdsAfterFilm[0];
-  console.log("    Registered Film Citation ID:", filmCid);
-
-  const filmTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=List_of_highest-grossing_films&oldid=1379737814";
-  const auditFilmCosmetic = await executeWrite(
-    ledgerAddress,
-    'audit_citation',
-    [filmCid, filmTargetRevUrl],
-    "Audit Film Citation Against Later Revision (COSMETIC)"
-  );
-
-  const filmRecordAfterAudit = JSON.parse(await client.readContract({
-    address: ledgerAddress,
-    functionName: 'get_citation',
-    args: [filmCid],
-  }));
-  const filmStatusAfterAudit = await client.readContract({
-    address: ledgerAddress,
-    functionName: 'get_status',
-    args: [filmCid],
-  });
-
-  evidence.cases.scenario_cosmetic = {
-    title: "Scenario 4: COSMETIC Drift Audit (Reworded phrasing, facts identical)",
-    citationId: filmCid,
-    registerTx: regFilm.txHash,
-    registerAgree: `${regFilm.agreeCount}/${regFilm.totalVotes}`,
-    auditTx: auditFilmCosmetic.txHash,
-    auditAgree: `${auditFilmCosmetic.agreeCount}/${auditFilmCosmetic.totalVotes}`,
-    baselineUrl: baseFilmUrl,
-    targetUrl: filmTargetRevUrl,
-    targetKind: "REVISION",
-    targetOldid: "1379737814",
-    auditClass: filmRecordAfterAudit.audits[0]?.class,
-    finalStatus: filmRecordAfterAudit.status,
-    statusString: filmStatusAfterAudit,
-    record: filmRecordAfterAudit,
-  };
+  if (regTuring.txHash) {
+    evidence.finalizedMeasurement = await measureFinalized(regTuring.txHash);
+  }
 
   // =========================================================================
   // NEGATIVE TESTS SUITE

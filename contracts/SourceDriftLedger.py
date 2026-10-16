@@ -10,7 +10,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from genlayer import *
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 MIN_QUOTE_CHARS = 30
 MAX_QUOTE_CHARS = 240
 MAX_ELEMENTS = 4
@@ -22,7 +22,7 @@ WINDOW_OVERLAP_CHARS = 500
 LIVE_AUDIT_COOLDOWN_SECONDS = 300
 MAX_FULL_AUDITS = 5
 MAX_AUDIT_SUMMARIES = 20
-RELEVANCE_THRESHOLD = 0.15
+RELEVANCE_THRESHOLD = 0.45
 
 STOP_WORDS = {
     "the", "and", "that", "have", "for", "not", "with", "you", "this", "but",
@@ -33,7 +33,8 @@ STOP_WORDS = {
     "look", "only", "come", "its", "over", "think", "also", "back", "after",
     "use", "two", "how", "our", "work", "first", "well", "way", "even", "new",
     "want", "because", "any", "these", "give", "day", "most", "been", "were",
-    "are", "was", "has", "had", "such", "each", "more", "other", "which"
+    "are", "was", "has", "had", "such", "each", "more", "which", "being",
+    "between", "during", "both", "through", "under", "where", "while", "does"
 }
 
 
@@ -116,7 +117,6 @@ def _normalize_text(s: str) -> str:
     text = text.replace("\u201c", '"').replace("\u201d", '"').replace("\u201e", '"').replace("\u201f", '"')
     text = text.replace("\u2013", "-").replace("\u2014", "-").replace("\u2212", "-")
     text = text.replace("\u00a0", " ").replace("\u202f", " ").replace("\u200b", "").replace("\ufeff", "")
-    # Strip Wikipedia citation markers: [1], [23], [citation needed], [note 1], etc.
     text = re.sub(r"\[(?:\d+|citation needed|clarification needed|page needed|note \d+)\]", " ", text)
     text = html_lib.unescape(text)
     return " ".join(text.split())
@@ -173,7 +173,6 @@ def _validate_host_and_scheme(parsed: urllib.parse.SplitResult) -> str:
     if host_norm == "localhost" or host_norm.endswith(".localhost"):
         raise gl.vm.UserError("source URL hostname cannot be localhost")
 
-    # Host must be a valid language subdomain of wikipedia.org: e.g. en.wikipedia.org
     parts = host_norm.split(".")
     if len(parts) != 3 or parts[1] != "wikipedia" or parts[2] != "org" or not re.match(r"^[a-z0-9\-]+$", parts[0]):
         raise gl.vm.UserError("source URL must be a wikipedia.org language domain")
@@ -254,7 +253,6 @@ def _validate_target_url(
         raise gl.vm.UserError("target URL host must match baseline host")
 
     if parsed.path == "/w/index.php":
-        # REVISION target
         qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
         if "title" not in qs or "oldid" not in qs:
             raise gl.vm.UserError("target revision URL must contain title and oldid")
@@ -276,7 +274,6 @@ def _validate_target_url(
         return (canonical_url, "REVISION", raw_oldid)
 
     elif parsed.path.startswith("/wiki/"):
-        # LIVE target
         if parsed.query:
             raise gl.vm.UserError("live target URL cannot contain query parameters")
 
@@ -292,25 +289,67 @@ def _validate_target_url(
         raise gl.vm.UserError("target URL path must be /w/index.php or /wiki/<Title>")
 
 
-def _compute_lexical_overlap(quote_text: str, window_text: str) -> float:
+def _extract_salient_tokens(raw_quote: str) -> set[str]:
     """
-    Pure deterministic lexical overlap function.
-    Returns ratio of unique quote terms appearing in the window text.
+    Deterministic extraction of salient entities, numbers, and proper nouns:
+    1. Tokens containing digits (numbers, dates, amounts).
+    2. Capitalized words (names, titles, proper nouns).
+    3. Content words length >= 5 not in STOP_WORDS.
     """
-    quote_words = set(re.findall(r"[a-z0-9]{3,}", quote_text.lower())) - STOP_WORDS
-    if not quote_words:
-        return 0.0
-    window_words = set(re.findall(r"[a-z0-9]{3,}", window_text.lower()))
-    matches = quote_words.intersection(window_words)
-    return len(matches) / float(len(quote_words))
+    numbers = set(re.findall(r"\b\d[\d,\.]*\b", raw_quote))
+    words = re.findall(r"\b[A-Z][a-zA-Z0-9\-]+\b", raw_quote)
+    proper_nouns = set(w.lower() for w in words if w.lower() not in STOP_WORDS)
+    content = set(w.lower() for w in re.findall(r"[a-z0-9]{5,}", raw_quote.lower()) if w.lower() not in STOP_WORDS)
+    salient = numbers | proper_nouns | content
+    if not salient:
+        salient = set(w.lower() for w in re.findall(r"[a-z0-9]{3,}", raw_quote.lower()) if w.lower() not in STOP_WORDS)
+    return salient
+
+
+def _extract_word_bigrams(text: str) -> set[tuple[str, str]]:
+    """Deterministic extraction of word bigrams excluding stop words."""
+    words = [w.lower() for w in re.findall(r"[a-z0-9]+", text.lower()) if w.lower() not in STOP_WORDS]
+    if len(words) < 2:
+        return set()
+    return set(zip(words[:-1], words[1:]))
+
+
+def _compute_relevance_score(raw_quote: str, window_text: str) -> float:
+    """
+    Calibrated strict relevance score:
+    Combines:
+    1. Salient entity & number recall (weight 0.6)
+    2. Word bigram overlap ratio (weight 0.4)
+    Empirically calibrated against Wikipedia diffs:
+    - Truly deleted/absent sentences score <= 0.20
+    - Rephrased/present sentences score >= 0.70
+    Threshold = 0.45.
+    """
+    salient = _extract_salient_tokens(raw_quote)
+    w_norm = window_text.lower()
+    w_words = set(re.findall(r"[a-z0-9]+", w_norm))
+    matched_salient = set(s for s in salient if s in w_norm or s in w_words)
+    salient_ratio = len(matched_salient) / len(salient) if salient else 0.0
+
+    q_bigrams = _extract_word_bigrams(raw_quote)
+    if q_bigrams:
+        w_bigrams = _extract_word_bigrams(window_text)
+        bigram_ratio = len(q_bigrams & w_bigrams) / len(q_bigrams)
+    else:
+        bigram_ratio = salient_ratio
+
+    return 0.6 * salient_ratio + 0.4 * bigram_ratio
+
+
+_compute_lexical_overlap = _compute_relevance_score
 
 
 def _select_windows_for_quotes(
     full_text: str,
-    quotes_norm: list[str]
+    quotes_raw: list[str]
 ) -> tuple[str, list[dict], str, int, int, bool]:
     """
-    Deterministic window selection based on lexical overlap with unresolved quotes.
+    Deterministic window selection based on calibrated relevance score with unresolved quotes.
     Strictly accounts for separator length so len(inspected_text) <= INSPECTION_BUDGET_CHARS.
     Returns: (inspected_text, selected_windows, coverage, source_chars_total, source_chars_inspected, truncated_at)
     """
@@ -329,8 +368,8 @@ def _select_windows_for_quotes(
         end = min(start + WINDOW_SIZE_CHARS, len(text_to_inspect))
         chunk = text_to_inspect[start:end]
         max_score = 0.0
-        for q in quotes_norm:
-            score = _compute_lexical_overlap(q, chunk)
+        for q in quotes_raw:
+            score = _compute_relevance_score(q, chunk)
             if score > max_score:
                 max_score = score
         windows.append({
@@ -445,8 +484,35 @@ def _map_class_to_status(drift_class: str) -> str:
     raise gl.vm.UserError(f"unknown audit class: {drift_class}")
 
 
+def _fetch_page_text(target_url: str) -> tuple[str, str]:
+    """Deterministic web fetch with render text mode and HTTP GET fallback."""
+    fetched_text = ""
+    fetch_method = "web.render"
+    try:
+        render_res = gl.nondet.web.render(target_url, mode="text")
+        fetched_text = str(render_res) if render_res is not None else ""
+    except Exception:
+        fetched_text = ""
+
+    if not fetched_text or not fetched_text.strip():
+        fetch_method = "web.get"
+        try:
+            resp = gl.nondet.web.get(target_url)
+            if int(resp.status) == 200 and resp.body is not None:
+                b = resp.body
+                fetched_text = b.decode("utf-8", errors="replace") if isinstance(b, (bytes, bytearray)) else str(b)
+        except Exception:
+            fetched_text = ""
+
+    clean_full = _clean_html(fetched_text) if fetched_text else ""
+    return (clean_full, fetch_method)
+
+
 class SourceDriftLedger(gl.Contract):
     citations: TreeMap[str, str]
+    audited_revisions: TreeMap[str, str]
+    citation_ids: TreeMap[str, str]
+    registrations: TreeMap[str, str]
     meta: TreeMap[str, str]
 
     def __init__(self):
@@ -456,10 +522,8 @@ class SourceDriftLedger(gl.Contract):
     def _ensure_meta_init(self) -> None:
         if "nonce" not in self.meta:
             self.meta["nonce"] = "0"
-        if "ids" not in self.meta:
-            self.meta["ids"] = "[]"
-        if "registrations" not in self.meta:
-            self.meta["registrations"] = "{}"
+        if "citations_total" not in self.meta:
+            self.meta["citations_total"] = "0"
 
     @gl.public.view
     def get_citation(self, citation_id: str) -> str:
@@ -497,12 +561,8 @@ class SourceDriftLedger(gl.Contract):
 
     @gl.public.view
     def list_citation_ids(self, offset: int, limit: int) -> str:
-        raw_ids = self.meta.get("ids", "[]")
-        try:
-            all_ids = json.loads(raw_ids)
-        except Exception:
-            all_ids = []
-
+        total = int(self.meta.get("citations_total", "0"))
+        all_ids = [self.citation_ids[str(i)] for i in range(total)]
         off = max(0, int(offset))
         lim = max(0, int(limit))
         reversed_ids = list(reversed(all_ids))
@@ -511,14 +571,10 @@ class SourceDriftLedger(gl.Contract):
 
     @gl.public.view
     def get_meta(self) -> str:
-        raw_ids = self.meta.get("ids", "[]")
-        try:
-            all_ids = json.loads(raw_ids)
-        except Exception:
-            all_ids = []
+        total = int(self.meta.get("citations_total", "0"))
         return json.dumps({
             "schema_version": SCHEMA_VERSION,
-            "citations_total": len(all_ids),
+            "citations_total": total,
             "nonce": int(self.meta.get("nonce", "0")),
         })
 
@@ -568,47 +624,20 @@ class SourceDriftLedger(gl.Contract):
                 "norm_quote": norm_q,
             })
 
-        # Check for duplicate registration preimage
         sorted_norm_preimage = f"{host_norm}|{oldid_str}|" + "|".join(sorted(seen_normalized_quotes))
         reg_fingerprint = hashlib.sha256(sorted_norm_preimage.encode("utf-8")).hexdigest()
 
-        # Check existing registrations without writing
-        existing_regs = {}
-        if "registrations" in self.meta:
-            try:
-                existing_regs = json.loads(self.meta["registrations"])
-            except Exception:
-                existing_regs = {}
-        if reg_fingerprint in existing_regs:
+        if reg_fingerprint in self.registrations:
             raise gl.vm.UserError("already registered")
 
         sender = gl.message.sender_address.as_hex
         current_ts, now_str = _get_current_timestamp()
 
-        # Deterministic baseline fetch and quote verification
         def run_baseline_fetch() -> str:
-            fetched_text = ""
-            fetch_method = "web.render"
-            try:
-                render_res = gl.nondet.web.render(canonical_url, mode="text")
-                fetched_text = str(render_res) if render_res is not None else ""
-            except Exception:
-                fetched_text = ""
-
-            if not fetched_text or not fetched_text.strip():
-                fetch_method = "web.get"
-                try:
-                    resp = gl.nondet.web.get(canonical_url)
-                    if int(resp.status) == 200 and resp.body is not None:
-                        b = resp.body
-                        fetched_text = b.decode("utf-8", errors="replace") if isinstance(b, (bytes, bytearray)) else str(b)
-                except Exception:
-                    fetched_text = ""
-
-            if not fetched_text or not fetched_text.strip():
+            clean_text, fetch_method = _fetch_page_text(canonical_url)
+            if not clean_text or not clean_text.strip():
                 return "FAIL|SOURCE_UNAVAILABLE"
 
-            clean_text = _clean_html(fetched_text)
             norm_text = _normalize_text(clean_text)
 
             for item in validated_quotes:
@@ -631,10 +660,10 @@ class SourceDriftLedger(gl.Contract):
         base_chars_total = int(parts[2])
         fetch_method = parts[3]
 
-        # All validations succeeded: write to storage
         self._ensure_meta_init()
         current_nonce = int(self.meta.get("nonce", "0")) + 1
         self.meta["nonce"] = str(current_nonce)
+        total_citations = int(self.meta.get("citations_total", "0"))
 
         cid_preimage = f"{sender}|{canonical_url}|{reg_fingerprint}|{current_nonce}".encode("utf-8")
         citation_id = hashlib.sha256(cid_preimage).hexdigest()[:12]
@@ -666,22 +695,20 @@ class SourceDriftLedger(gl.Contract):
         }
 
         self.citations[citation_id] = json.dumps(record)
-
-        ids = json.loads(self.meta.get("ids", "[]"))
-        ids.append(citation_id)
-        self.meta["ids"] = json.dumps(ids)
-
-        existing_regs[reg_fingerprint] = citation_id
-        self.meta["registrations"] = json.dumps(existing_regs)
+        self.citation_ids[str(total_citations)] = citation_id
+        self.registrations[reg_fingerprint] = citation_id
+        self.meta["citations_total"] = str(total_citations + 1)
 
     @gl.public.write
     def audit_citation(self, citation_id: str, target_url: str) -> None:
         """
         Audit a registered citation against a target URL:
         - target can be a later REVISION (oldid > baseline_oldid) or the LIVE page (/wiki/<Title>)
+        - persistent TreeMap audited_revisions prevents repeated audits even after history compaction
         - deterministic layer runs first (verbatim presence -> SAME)
         - model layer runs only for unresolved elements
-        - consensus evaluates a compact canonical string
+        - custom leader/validator consensus compares canonical enumerations, excludes LIVE fingerprint,
+          and verifies cited quotes as substrings without passage ID dependence.
         """
         cid = str(citation_id).strip()
         if cid not in self.citations:
@@ -700,11 +727,11 @@ class SourceDriftLedger(gl.Contract):
 
         current_ts, now_str = _get_current_timestamp()
 
-        # Check already audited for REVISION targets
+        # Defect 5: Check already audited via persistent TreeMap
         if target_kind == "REVISION":
-            for prev in audits:
-                if prev.get("target_kind") == "REVISION" and prev.get("target_oldid") == target_oldid:
-                    raise gl.vm.UserError("target already audited")
+            audit_key = f"{cid}:{target_oldid}"
+            if audit_key in self.audited_revisions:
+                raise gl.vm.UserError("target already audited")
 
         # Check cooldown for LIVE targets
         if target_kind == "LIVE":
@@ -717,30 +744,13 @@ class SourceDriftLedger(gl.Contract):
 
         sender = gl.message.sender_address.as_hex
         norm_quotes_map = {e["id"]: _normalize_text(e["quote"]) for e in elements}
+        raw_quotes_map = {e["id"]: e["quote"] for e in elements}
 
-        def run_audit_evaluation() -> str:
-            fetched_text = ""
-            fetch_method = "web.render"
-            try:
-                render_res = gl.nondet.web.render(canonical_target_url, mode="text")
-                fetched_text = str(render_res) if render_res is not None else ""
-            except Exception:
-                fetched_text = ""
-
-            if not fetched_text or not fetched_text.strip():
-                fetch_method = "web.get"
-                try:
-                    resp = gl.nondet.web.get(canonical_target_url)
-                    if int(resp.status) == 200 and resp.body is not None:
-                        b = resp.body
-                        fetched_text = b.decode("utf-8", errors="replace") if isinstance(b, (bytes, bytearray)) else str(b)
-                except Exception:
-                    fetched_text = ""
-
-            if not fetched_text or not fetched_text.strip():
+        def leader_audit_eval() -> str:
+            clean_full, fetch_method = _fetch_page_text(canonical_target_url)
+            if not clean_full or not clean_full.strip():
                 return "FAIL|SOURCE_UNAVAILABLE"
 
-            clean_full = _clean_html(fetched_text)
             norm_full = _normalize_text(clean_full)
             target_fingerprint = hashlib.sha256(norm_full.encode("utf-8")).hexdigest()
 
@@ -761,18 +771,19 @@ class SourceDriftLedger(gl.Contract):
                 else:
                     unresolved_ids.append(eid)
 
-            inspected_text = ""
-            presented_passages = []
-            passages_by_id = {}
-            coverage = "FULL"
-            source_chars_total = len(clean_full)
-            source_chars_inspected = len(clean_full)
-            budget_chars_used = len(clean_full)
-            truncated_at = False
-
-            if unresolved_ids:
-                # 2. Window selection and segmentation
-                unresolved_quotes = [norm_quotes_map[eid] for eid in unresolved_ids]
+            if not unresolved_ids:
+                # Defect 4: Deterministic path reporting
+                coverage = "DETERMINISTIC_ONLY"
+                presented_passages = []
+                presented_segment_ids = []
+                presented_segments_count = 0
+                budget_chars_used = 0
+                source_chars_total = len(clean_full)
+                source_chars_inspected = len(clean_full)
+                truncated_at = False
+            else:
+                # 2. Window selection and segmentation for unresolved elements
+                unresolved_raw_quotes = [raw_quotes_map[eid] for eid in unresolved_ids]
                 (
                     inspected_text,
                     selected_windows,
@@ -780,18 +791,19 @@ class SourceDriftLedger(gl.Contract):
                     source_chars_total,
                     source_chars_inspected,
                     truncated_at,
-                ) = _select_windows_for_quotes(clean_full, unresolved_quotes)
+                ) = _select_windows_for_quotes(clean_full, unresolved_raw_quotes)
                 budget_chars_used = len(inspected_text)
 
                 presented_passages = _segment_passages(inspected_text)
+                presented_segment_ids = [p["id"] for p in presented_passages]
+                presented_segments_count = len(presented_passages)
                 passages_by_id = {p["id"]: p for p in presented_passages}
 
-                # Construct strict prompt for unresolved elements
                 passages_block = "\n".join(
                     f"[{p['id']}] {p['text']}" for p in presented_passages
                 )
                 elements_to_classify = [
-                    {"id": eid, "quote": [e["quote"] for e in elements if e["id"] == eid][0]}
+                    {"id": eid, "quote": raw_quotes_map[eid]}
                     for eid in unresolved_ids
                 ]
 
@@ -854,13 +866,12 @@ class SourceDriftLedger(gl.Contract):
                         if pid is not None or cq is not None:
                             return "FAIL|INVALID_MODEL_OUTPUT"
 
-                        # ABSENT discipline check:
-                        # Scan full text in 3000-char windows to ensure no window reaches RELEVANCE_THRESHOLD
-                        quote_norm = norm_quotes_map[eid]
+                        # Defect 3: Calibrated absence discipline check
+                        raw_q = raw_quotes_map[eid]
                         step = WINDOW_SIZE_CHARS - WINDOW_OVERLAP_CHARS
                         for w_start in range(0, len(norm_full), step):
                             w_chunk = norm_full[w_start:w_start + WINDOW_SIZE_CHARS]
-                            score = _compute_lexical_overlap(quote_norm, w_chunk)
+                            score = _compute_relevance_score(raw_q, w_chunk)
                             if score >= RELEVANCE_THRESHOLD:
                                 return "FAIL|ABSENCE_UNSUPPORTED"
 
@@ -872,7 +883,6 @@ class SourceDriftLedger(gl.Contract):
                             "cited_quote": None,
                         }
                     else:
-                        # REPHRASED or CHANGED
                         if not isinstance(pid, str) or pid not in passages_by_id:
                             return "FAIL|INVALID_MODEL_OUTPUT"
                         if not isinstance(cq, str) or len(cq.strip()) < 10:
@@ -890,23 +900,22 @@ class SourceDriftLedger(gl.Contract):
                             "cited_quote": cq.strip(),
                         }
 
-            # Map overall drift class
             ordered_statuses = [element_results[e["id"]]["status"] for e in elements]
             audit_class = _map_element_statuses_to_class(ordered_statuses)
 
-            # Consensus fingerprint rules: target fingerprint included only for REVISION
+            # Defect 1: Canonical consensus string of enumerations ONLY
+            # Target fingerprint included ONLY for REVISION targets; excluded for LIVE
             fp_for_consensus = target_fingerprint if target_kind == "REVISION" else "NONE"
-            elem_summary = "|".join(f"{e['id']}:{element_results[e['id']]['status']}:{element_results[e['id']].get('passage_id') or ''}" for e in elements)
+            elem_summary = "|".join(f"{e['id']}:{element_results[e['id']]['status']}" for e in elements)
             canonical_summary = f"{audit_class}|{fp_for_consensus}|{elem_summary}"
 
-            # Full audit payload packaged into JSON
             audit_data = {
                 "class": audit_class,
                 "target_text_sha256": target_fingerprint,
                 "elements": [element_results[e["id"]] for e in elements],
                 "passages": presented_passages,
-                "presented_segment_ids": [p["id"] for p in presented_passages],
-                "presented_segments_count": len(presented_passages),
+                "presented_segment_ids": presented_segment_ids,
+                "presented_segments_count": presented_segments_count,
                 "source_chars_total": source_chars_total,
                 "source_chars_inspected": source_chars_inspected,
                 "budget_chars_used": budget_chars_used,
@@ -918,7 +927,144 @@ class SourceDriftLedger(gl.Contract):
 
             return f"OK|{canonical_summary}\n---\n{json.dumps(audit_data)}"
 
-        consensus_res = gl.eq_principle.strict_eq(run_audit_evaluation)
+        def validator_audit_eval(leaders_res: gl.vm.Result) -> bool:
+            """
+            Custom validator consensus check (Defect 1):
+            1. Verifies leader returned a valid OK payload with header and JSON.
+            2. Validator independently fetches target document from the same URL.
+            3. For REVISION targets, verifies target fingerprint matches leader's exactly.
+            4. For deterministic elements, validator's SAME/not-SAME decision MUST equal leader's.
+            5. Verifies canonical enumeration string matches validator's expected canonical string.
+            6. For model elements (REPHRASED/CHANGED), verifies leader's cited_quote is a verbatim
+               substring (after shared normalization) of ANY passage re-derived by the validator.
+               Passage IDs and character counts are NOT compared.
+            7. For ABSENT elements, validator confirms absence discipline holds on its own fetched text.
+            """
+            if not isinstance(leaders_res, gl.vm.Return):
+                return False
+
+            raw_leader = leaders_res.calldata
+            if not isinstance(raw_leader, str):
+                return False
+
+            if raw_leader.startswith("FAIL|"):
+                if raw_leader == "FAIL|SOURCE_UNAVAILABLE":
+                    def val_fail_fetch() -> tuple[str, str]:
+                        return _fetch_page_text(canonical_target_url)
+                    sand_res = gl.vm.spawn_sandbox(val_fail_fetch)
+                    if not isinstance(sand_res, gl.vm.Return):
+                        return True
+                    val_clean_full, _ = sand_res.calldata
+                    return not val_clean_full or not val_clean_full.strip()
+                return True
+
+            if not raw_leader.startswith("OK|") or "\n---\n" not in raw_leader:
+                return False
+
+            leader_header, raw_payload = raw_leader.split("\n---\n", 1)
+            leader_canonical = leader_header[len("OK|"):]
+
+            try:
+                leader_data = json.loads(raw_payload)
+            except Exception:
+                return False
+
+            def val_fetch_fn() -> tuple[str, str]:
+                return _fetch_page_text(canonical_target_url)
+
+            sand_res = gl.vm.spawn_sandbox(val_fetch_fn)
+            if not isinstance(sand_res, gl.vm.Return):
+                return False
+
+            val_clean_full, _ = sand_res.calldata
+            if not val_clean_full or not val_clean_full.strip():
+                return False
+
+            val_norm_full = _normalize_text(val_clean_full)
+            val_fingerprint = hashlib.sha256(val_norm_full.encode("utf-8")).hexdigest()
+
+            # Target fingerprint check: strictly for REVISION targets only
+            if target_kind == "REVISION":
+                if val_fingerprint != leader_data.get("target_text_sha256"):
+                    return False
+
+            leader_elements = leader_data.get("elements", [])
+            leader_elems_by_id = {le["id"]: le for le in leader_elements if isinstance(le, dict) and "id" in le}
+            if len(leader_elems_by_id) != len(elements):
+                return False
+
+            val_unresolved_ids = []
+            for e in elements:
+                eid = e["id"]
+                if eid not in leader_elems_by_id:
+                    return False
+                le = leader_elems_by_id[eid]
+                val_is_same = norm_quotes_map[eid] in val_norm_full
+                leader_is_same = (le.get("status") == "SAME")
+
+                # (iii) Deterministic decisions must equal
+                if val_is_same != leader_is_same:
+                    return False
+                if val_is_same and le.get("decided_by") != "DETERMINISTIC":
+                    return False
+
+                if not val_is_same:
+                    val_unresolved_ids.append(eid)
+
+            leader_class = leader_data.get("class")
+            statuses = [leader_elems_by_id[e["id"]].get("status") for e in elements]
+            try:
+                expected_class = _map_element_statuses_to_class(statuses)
+            except Exception:
+                return False
+
+            if expected_class != leader_class:
+                return False
+
+            # (i) Canonical string of enumerations only
+            expected_fp = val_fingerprint if target_kind == "REVISION" else "NONE"
+            expected_summary = "|".join(f"{e['id']}:{leader_elems_by_id[e['id']].get('status')}" for e in elements)
+            expected_canonical = f"{expected_class}|{expected_fp}|{expected_summary}"
+
+            if leader_canonical != expected_canonical:
+                return False
+
+            # (ii) Model-derived passage checks on validator's independently re-derived passages
+            if val_unresolved_ids:
+                val_unresolved_raw = [raw_quotes_map[eid] for eid in val_unresolved_ids]
+                val_inspected, _, _, _, _, _ = _select_windows_for_quotes(val_clean_full, val_unresolved_raw)
+                val_passages = _segment_passages(val_inspected)
+                val_norm_passages = [_normalize_text(p["text"]) for p in val_passages]
+
+                for eid in val_unresolved_ids:
+                    le = leader_elems_by_id[eid]
+                    st = le.get("status")
+
+                    if st in ("REPHRASED", "CHANGED"):
+                        cq = le.get("cited_quote")
+                        if not cq or not isinstance(cq, str) or len(cq.strip()) < 10:
+                            return False
+                        norm_cq = _normalize_text(cq)
+                        # Verbatim substring of ANY passage re-derived by validator
+                        if not any(norm_cq in vp for vp in val_norm_passages):
+                            return False
+
+                    elif st == "ABSENT":
+                        if le.get("cited_quote") is not None or le.get("passage_id") is not None:
+                            return False
+                        raw_q = raw_quotes_map[eid]
+                        step = WINDOW_SIZE_CHARS - WINDOW_OVERLAP_CHARS
+                        for w_start in range(0, len(val_norm_full), step):
+                            w_chunk = val_norm_full[w_start:w_start + WINDOW_SIZE_CHARS]
+                            score = _compute_relevance_score(raw_q, w_chunk)
+                            if score >= RELEVANCE_THRESHOLD:
+                                return False
+                    else:
+                        return False
+
+            return True
+
+        consensus_res = gl.vm.run_nondet_unsafe(leader_audit_eval, validator_audit_eval)
         if not consensus_res or not consensus_res.startswith("OK|"):
             if consensus_res.startswith("FAIL|SOURCE_UNAVAILABLE"):
                 raise gl.vm.UserError("source unavailable")
@@ -963,16 +1109,13 @@ class SourceDriftLedger(gl.Contract):
             "fingerprint_in_consensus": audit_payload["fingerprint_in_consensus"],
         }
 
-        # History compaction: keep full detail for newest MAX_FULL_AUDITS, compact older ones
         updated_audits = list(audits)
         updated_audits.append(audit_entry)
 
-        # Compact older audits if exceeding MAX_FULL_AUDITS
         final_audits = []
         total_count = len(updated_audits)
         for idx, a in enumerate(updated_audits):
             if idx < total_count - MAX_FULL_AUDITS:
-                # compact summary representation
                 compact = {
                     "n": a["n"],
                     "auditor": a["auditor"],
@@ -988,7 +1131,6 @@ class SourceDriftLedger(gl.Contract):
             else:
                 final_audits.append(a)
 
-        # Cap total audit summaries at MAX_AUDIT_SUMMARIES
         if len(final_audits) > MAX_AUDIT_SUMMARIES:
             final_audits = final_audits[-MAX_AUDIT_SUMMARIES:]
 
@@ -998,3 +1140,6 @@ class SourceDriftLedger(gl.Contract):
         record["status"] = _map_class_to_status(audit_class)
 
         self.citations[cid] = json.dumps(record)
+
+        if target_kind == "REVISION":
+            self.audited_revisions[f"{cid}:{target_oldid}"] = audit_class

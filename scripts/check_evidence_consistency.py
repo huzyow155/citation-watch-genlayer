@@ -62,7 +62,14 @@ def check_consistency():
     addr_pattern = re.compile(r"0x[0-9a-fA-F]{40}")
     truncated_pattern = re.compile(r"0x[a-fA-F0-9]{4,16}\.\.\.[a-fA-F0-9]{4,16}")
 
-    superseded_addrs = [item["address"].lower() for item in deployments.get("supersededDeployments", [])]
+    superseded_addrs = []
+    for item in deployments.get("supersededDeployments", []):
+        if "address" in item:
+            superseded_addrs.append(item["address"].lower())
+        if "ledger" in item and isinstance(item["ledger"], dict) and "contractAddress" in item["ledger"]:
+            superseded_addrs.append(item["ledger"]["contractAddress"].lower())
+        if "claimsBoard" in item and isinstance(item["claimsBoard"], dict) and "contractAddress" in item["claimsBoard"]:
+            superseded_addrs.append(item["claimsBoard"]["contractAddress"].lower())
 
     for fpath in files_to_check:
         fname = os.path.basename(fpath)

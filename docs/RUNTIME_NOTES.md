@@ -126,7 +126,31 @@ Empirical execution results:
    - `get_status`: 200, `get_len`: 1,322,812 raw HTML bytes.
 
 ### Consensus Architecture Decision
-- For **registration**: Deterministic fetch and normalization produces an exact fingerprint. Consensus value is `"OK|" + baseline_text_sha256`. Since revision permalinks are immutable, validators reproduce the identical sha256 fingerprint. We use `strict_eq` (or deterministic comparative) on this canonical string.
-- For **auditing**: All validators independently fetch the target page, run the deterministic verbatim check layer, extract relevant passage windows by lexical overlap, invoke model classification only for non-verbatim elements, and construct a compact canonical consensus string:
-  `"{CLASS}|{target_text_sha256_or_NONE}|e1:{STATUS}:{PASSAGE_ID}|..."`
-- Comparing canonical strings via `strict_eq` provides pure deterministic agreement when all validators fetch identical page contents (revisions). When comparative principle is used as a fallback or for prompt comparison, the benchmark proves both execute reliably with 3 of 5 validator agreement on Studionet.
+- For **registration**: Deterministic fetch and normalization produces an exact fingerprint. Consensus value is `"OK|" + baseline_text_sha256`. Since revision permalinks are immutable, validators reproduce the identical sha256 fingerprint.
+- For **auditing**: In v1.1.0, `SourceDriftLedger` replaces `strict_eq` with `gl.vm.run_nondet_unsafe(leader_audit_eval, validator_audit_eval)`:
+  1. The leader produces the full audit payload (`OK|<canonical>\n---\n<json>`).
+  2. The validator re-fetches the page inside a sandbox using `gl.vm.spawn_sandbox(val_fetch_fn)`.
+  3. The validator checks that the canonical enum string (`<CLASS>|<FP_OR_NONE>|e1:<STATUS>|...`) matches.
+  4. For `LIVE` targets, the fingerprint is replaced with `"NONE"` and excluded from consensus comparison, while character counts and raw passages are kept out of the canonical consensus string.
+  5. For model elements, the validator re-derives passages independently and verifies that the leader's `cited_quote` is a normalized substring of any validator passage, without comparing passage IDs (`p1` vs `p2`).
+
+## Critical GenVM Discovery: `gl.vm.spawn_sandbox` in Validator Context
+During the v1.1.0 implementation, we discovered that calling non-deterministic operations (`gl.nondet.web.render` or `gl.nondet.web.get`) directly from the top-level validator callback of `gl.vm.run_nondet_unsafe` throws execution faults inside GenVM worker threads, causing validators to disagree.
+
+To execute non-deterministic calls inside the validator:
+```python
+def val_fetch_fn() -> tuple[str, str]:
+    return _fetch_page_text(canonical_target_url)
+
+sand_res = gl.vm.spawn_sandbox(val_fetch_fn)
+if not isinstance(sand_res, gl.vm.Return):
+    return False
+val_clean_full, _ = sand_res.calldata
+```
+
+### Probe2 Verification on Studionet
+- Probe contract address: `0x442863622d98F506c492C0484D187a9FeB487d77`
+- Deployment Tx: `0x48a4789547ff56eaeb72e3a13783854ee7589d38f8fc87766f6ec6d9bc57ddcc` (`ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes).
+- Probe execution Tx: `0x386ef2d03232473837ce36542801acfeab232d72cd94fda4516ca1f987db29ea` (`ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes, duration 26.5s).
+- Conclusion: `gl.vm.spawn_sandbox` inside `validator_audit_eval` cleanly wraps web fetch operations and delivers reliable majority agreement across validator nodes.
+

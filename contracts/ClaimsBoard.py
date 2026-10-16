@@ -70,6 +70,7 @@ class ClaimsBoard(gl.Contract):
     owner: str
     ledger_address: str
     claims: TreeMap[str, str]
+    claim_ids: TreeMap[str, str]
     meta: TreeMap[str, str]
 
     def __init__(self):
@@ -79,8 +80,8 @@ class ClaimsBoard(gl.Contract):
     def _ensure_meta_init(self) -> None:
         if "nonce" not in self.meta:
             self.meta["nonce"] = "0"
-        if "ids" not in self.meta:
-            self.meta["ids"] = "[]"
+        if "claims_total" not in self.meta:
+            self.meta["claims_total"] = "0"
 
     @gl.public.view
     def get_owner(self) -> str:
@@ -99,12 +100,8 @@ class ClaimsBoard(gl.Contract):
 
     @gl.public.view
     def list_claim_ids(self, offset: int, limit: int) -> str:
-        raw_ids = self.meta.get("ids", "[]")
-        try:
-            all_ids = json.loads(raw_ids)
-        except Exception:
-            all_ids = []
-
+        total = int(self.meta.get("claims_total", "0"))
+        all_ids = [self.claim_ids[str(i)] for i in range(total)]
         off = max(0, int(offset))
         lim = max(0, int(limit))
         reversed_ids = list(reversed(all_ids))
@@ -151,7 +148,6 @@ class ClaimsBoard(gl.Contract):
         if not cid:
             raise gl.vm.UserError("citation_id cannot be empty")
 
-        # Cross-contract view call to SourceDriftLedger
         ledger = gl.get_contract_at(Address(self.ledger_address))
         status_str = ledger.view().get_status(cid)
 
@@ -162,6 +158,7 @@ class ClaimsBoard(gl.Contract):
         self._ensure_meta_init()
         current_nonce = int(self.meta.get("nonce", "0")) + 1
         self.meta["nonce"] = str(current_nonce)
+        total_claims = int(self.meta.get("claims_total", "0"))
 
         entry_preimage = f"{sender}|{cid}|{clean_headline}|{current_nonce}".encode("utf-8")
         entry_id = hashlib.sha256(entry_preimage).hexdigest()[:12]
@@ -178,10 +175,8 @@ class ClaimsBoard(gl.Contract):
         }
 
         self.claims[entry_id] = json.dumps(entry)
-
-        ids = json.loads(self.meta.get("ids", "[]"))
-        ids.append(entry_id)
-        self.meta["ids"] = json.dumps(ids)
+        self.claim_ids[str(total_claims)] = entry_id
+        self.meta["claims_total"] = str(total_claims + 1)
 
     @gl.public.write
     def refresh_claim(self, entry_id: str) -> None:

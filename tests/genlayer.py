@@ -19,6 +19,35 @@ class GlVM:
             super().__init__(message)
             self.message = str(message)
 
+        def __str__(self):
+            return self.message
+
+    class Return:
+        def __init__(self, calldata):
+            self.calldata = calldata
+
+    Result = object
+
+    def spawn_sandbox(self, fn, **kwargs):
+        try:
+            res = fn()
+            return self.Return(calldata=res)
+        except self.UserError as e:
+            return e
+        except Exception as e:
+            return self.VMError(str(e))
+
+    def run_nondet_unsafe(self, leader_fn, validator_fn):
+        leader_res = leader_fn()
+        wrapped = self.Return(calldata=leader_res)
+        valid = validator_fn(wrapped)
+        if not valid:
+            raise self.VMError("validator disagreed")
+        return leader_res
+
+    def run_nondet(self, leader_fn, validator_fn, **kwargs):
+        return self.run_nondet_unsafe(leader_fn, validator_fn)
+
 
 class GlPublic:
     @staticmethod
@@ -137,8 +166,19 @@ class ContractProxy:
         return self._target
 
 
+class GlContract:
+    def __new__(cls, *args, **kwargs):
+        instance = super().__new__(cls)
+        for base in cls.__mro__:
+            for attr_name, attr_type in getattr(base, "__annotations__", {}).items():
+                origin = getattr(attr_type, "__origin__", attr_type)
+                if origin is dict or "TreeMap" in str(attr_type) or attr_type is dict:
+                    setattr(instance, attr_name, {})
+        return instance
+
+
 class GlMock:
-    Contract = object
+    Contract = GlContract
     vm = GlVM()
     public = GlPublic()
     eq_principle = GlEqPrinciple()

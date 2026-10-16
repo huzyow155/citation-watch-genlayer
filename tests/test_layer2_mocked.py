@@ -49,6 +49,8 @@ class TestLayer2Mocked(unittest.TestCase):
         """Verify storage snapshot equality after EVERY rejection path in register_citation."""
         initial_citations = copy.deepcopy(self.ledger.citations)
         initial_meta = copy.deepcopy(self.ledger.meta)
+        initial_ids = copy.deepcopy(self.ledger.citation_ids)
+        initial_regs = copy.deepcopy(self.ledger.registrations)
 
         rejection_cases = [
             # 1. Invalid label
@@ -85,6 +87,14 @@ class TestLayer2Mocked(unittest.TestCase):
                 self.ledger.meta, initial_meta,
                 f"Meta storage modified during rejection case {idx}"
             )
+            self.assertEqual(
+                self.ledger.citation_ids, initial_ids,
+                f"Citation IDs storage modified during rejection case {idx}"
+            )
+            self.assertEqual(
+                self.ledger.registrations, initial_regs,
+                f"Registrations storage modified during rejection case {idx}"
+            )
 
     def test_duplicate_registration_rejection(self):
         quote = "Alan Mathison Turing was an English mathematician"
@@ -103,7 +113,7 @@ class TestLayer2Mocked(unittest.TestCase):
         """Regression test ensuring latest_audit_index and status correctly track repeated audits."""
         quote = "Alan Mathison Turing was an English mathematician"
         self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
-        cid = json.loads(self.ledger.meta["ids"])[0]
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
 
         # Initially UNAUDITED
         status_str = self.ledger.get_status(cid)
@@ -170,7 +180,7 @@ class TestLayer2Mocked(unittest.TestCase):
     def test_live_audit_cooldown(self):
         quote = "Alan Mathison Turing was an English mathematician"
         self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
-        cid = json.loads(self.ledger.meta["ids"])[0]
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
 
         live_url = "https://en.wikipedia.org/wiki/Alan_Turing"
         gl.nondet.web.pages[live_url] = self.base_text
@@ -195,7 +205,7 @@ class TestLayer2Mocked(unittest.TestCase):
     def test_already_audited_target_revision(self):
         quote = "Alan Mathison Turing was an English mathematician"
         self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
-        cid = json.loads(self.ledger.meta["ids"])[0]
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
 
         rev_url = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1100"
         gl.nondet.web.pages[rev_url] = self.base_text
@@ -209,7 +219,7 @@ class TestLayer2Mocked(unittest.TestCase):
     def test_source_unavailable_never_recorded_as_drift(self):
         quote = "Alan Mathison Turing was an English mathematician"
         self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
-        cid = json.loads(self.ledger.meta["ids"])[0]
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
 
         rev_missing = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1100"
         # Not adding rev_missing to gl.nondet.web.pages -> returns 404/empty
@@ -226,14 +236,14 @@ class TestLayer2Mocked(unittest.TestCase):
     def test_consumer_badge_transitions_and_history(self):
         quote = "Alan Mathison Turing was an English mathematician"
         self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
-        cid = json.loads(self.ledger.meta["ids"])[0]
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
 
         self.board.set_ledger("0x2222222222222222222222222222222222222222")
         self.assertEqual(self.board.get_ledger_address(), "0x2222222222222222222222222222222222222222")
 
         # 1. Publish claim when ledger citation is UNAUDITED
         self.board.publish_claim(cid, "Alan Turing was verified English mathematician")
-        claim_id = json.loads(self.board.meta["ids"])[0]
+        claim_id = json.loads(self.board.list_claim_ids(0, 10))[0]
 
         claim = json.loads(self.board.get_claim(claim_id))
         self.assertEqual(claim["badge"], "UNAUDITED")
