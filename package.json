@@ -1,0 +1,23 @@
+{
+  "name": "citation-watch-genlayer",
+  "version": "1.0.0",
+  "description": "CitationWatch: Intelligent Contract system on GenLayer for semantic citation drift detection against immutable Wikipedia revision baselines",
+  "type": "commonjs",
+  "scripts": {
+    "test": "python -m unittest discover tests",
+    "scan:ascii": "python scripts/scan_ascii.py",
+    "scan:banned": "python scripts/scan_banned_words.py",
+    "scan:secrets": "python scripts/scan_secrets.py",
+    "check:evidence": "python scripts/check_evidence_consistency.py",
+    "verify:source": "node scripts/verify_source.js",
+    "render:evidence": "node scripts/tools/render_evidence.js",
+    "deploy": "node scripts/deploy/deploy.js",
+    "evidence": "node scripts/deploy/run_evidence.js",
+    "check": "npm run test && npm run scan:ascii && npm run scan:banned && npm run scan:secrets && npm run verify:source && npm run check:evidence"
+  },
+  "author": "huzyow155",
+  "license": "MIT",
+  "dependencies": {
+    "genlayer-js": "^1.1.8"
+  }
+}
