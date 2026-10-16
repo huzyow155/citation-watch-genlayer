@@ -1,0 +1,413 @@
+{
+  "network": "GenLayer Studionet (Preview)",
+  "chainId": 61999,
+  "rpc": "https://studio.genlayer.com/api",
+  "ledgerAddress": "0x0d24CC10b5396C718c019E239c90c7eE6b17BE57",
+  "claimsBoardAddress": "0x76Ef8E906c8Fec113c4Db846e60196E58e6B818D",
+  "ledgerDeployTxHash": "0x8058288116cb78df58dd1c5dd1a84383ac8bc6ea3ca1b3bd06b81f2beb40d874",
+  "claimsBoardDeployTxHash": "0x4865176578ebf2b800c5fe61ca75a0bcafddf8f6464bb8ace32b2134824fc04c",
+  "setLedgerTxHash": "0x02f91c5c28318f6e330d27332181b7bc38bffd96a9fa2cdf2f882727e51cddcd",
+  "recordedAt": "2026-10-16T04:31:26.477Z",
+  "cases": {
+    "scenario_unchanged": {
+      "title": "Scenario 1: UNCHANGED Audit (Deterministic Verbatim Match)",
+      "citationId": "a984e9a3885e",
+      "registerTx": "0x282199b8d13ea5c8a15b4e09e60291dbff1b1926a8745ac42dd0d5ea2ab1f2ad",
+      "registerAgree": "3/5",
+      "auditTx": "0x03901425b132d9b9a8cc1782cb3c9617e3d0e58deb153ed8a796e2825cf15edd",
+      "auditAgree": "3/5",
+      "baselineUrl": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+      "targetUrl": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
+      "targetKind": "REVISION",
+      "targetOldid": "1380390650",
+      "auditClass": "UNCHANGED",
+      "finalStatus": "HEALTHY",
+      "statusString": "HEALTHY|UNCHANGED|1|2026-10-16T04:31:04Z",
+      "record": {
+        "schema_version": "1.0.0",
+        "citation_id": "a984e9a3885e",
+        "label": "Alan Turing Silver Savings",
+        "registrant": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+        "registered_at": "2026-10-16T04:30:17Z",
+        "registered_at_ts": 1792125017,
+        "baseline_url": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+        "baseline_host": "en.wikipedia.org",
+        "baseline_title": "Alan Turing",
+        "baseline_oldid": "1379625434",
+        "elements": [
+          {
+            "id": "e1",
+            "quote": "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.",
+            "quote_sha256": "8d46387f626ab24f0c9d45334450386a8317e5a2d0176740ddf81149bf4e3aa7"
+          }
+        ],
+        "baseline_text_sha256": "7e102b03190967d1633aca1f9db0f91615219b3ce672a6bdd093129e93eff8b3",
+        "baseline_chars_total": 117662,
+        "fetch_method": "web.render",
+        "latest_audit_index": 0,
+        "status": "HEALTHY",
+        "audits_total": 1,
+        "audits": [
+          {
+            "n": 1,
+            "auditor": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+            "audited_at": "2026-10-16T04:31:04Z",
+            "audited_at_ts": 1792125064,
+            "target_url": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
+            "target_kind": "REVISION",
+            "target_oldid": "1380390650",
+            "class": "UNCHANGED",
+            "elements": [
+              {
+                "id": "e1",
+                "status": "SAME",
+                "decided_by": "DETERMINISTIC",
+                "passage_id": null,
+                "cited_quote": "In the 1940s, Turing became worried about losing his savings in the event of a German invasion."
+              }
+            ],
+            "passages": [],
+            "target_text_sha256": "fb46e95c71f1981500e27eb388b8033558666b3adeda0a2aa0710e1ae4d779a3",
+            "presented_segment_ids": [],
+            "presented_segments_count": 0,
+            "source_chars_total": 119649,
+            "source_chars_inspected": 119649,
+            "budget_chars_used": 119649,
+            "truncated_at": false,
+            "coverage": "FULL",
+            "fetch_method": "web.render",
+            "fingerprint_in_consensus": true
+          }
+        ]
+      }
+    },
+    "scenario_live_and_history": {
+      "title": "Scenario 2: LIVE Page Audit & Multi-Audit History",
+      "citationId": "a984e9a3885e",
+      "auditTx": "0xf318baa863cb01e8747ec8f493d75e874f0ae1537cd9c4e5521032122f06c010",
+      "auditAgree": "0/5",
+      "targetUrl": "https://en.wikipedia.org/wiki/Alan_Turing",
+      "targetKind": "LIVE",
+      "auditsTotal": 1,
+      "latestAuditIndex": 0,
+      "statusString": "HEALTHY|UNCHANGED|1|2026-10-16T04:31:04Z",
+      "record": {
+        "schema_version": "1.0.0",
+        "citation_id": "a984e9a3885e",
+        "label": "Alan Turing Silver Savings",
+        "registrant": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+        "registered_at": "2026-10-16T04:30:17Z",
+        "registered_at_ts": 1792125017,
+        "baseline_url": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+        "baseline_host": "en.wikipedia.org",
+        "baseline_title": "Alan Turing",
+        "baseline_oldid": "1379625434",
+        "elements": [
+          {
+            "id": "e1",
+            "quote": "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.",
+            "quote_sha256": "8d46387f626ab24f0c9d45334450386a8317e5a2d0176740ddf81149bf4e3aa7"
+          }
+        ],
+        "baseline_text_sha256": "7e102b03190967d1633aca1f9db0f91615219b3ce672a6bdd093129e93eff8b3",
+        "baseline_chars_total": 117662,
+        "fetch_method": "web.render",
+        "latest_audit_index": 0,
+        "status": "HEALTHY",
+        "audits_total": 1,
+        "audits": [
+          {
+            "n": 1,
+            "auditor": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+            "audited_at": "2026-10-16T04:31:04Z",
+            "audited_at_ts": 1792125064,
+            "target_url": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
+            "target_kind": "REVISION",
+            "target_oldid": "1380390650",
+            "class": "UNCHANGED",
+            "elements": [
+              {
+                "id": "e1",
+                "status": "SAME",
+                "decided_by": "DETERMINISTIC",
+                "passage_id": null,
+                "cited_quote": "In the 1940s, Turing became worried about losing his savings in the event of a German invasion."
+              }
+            ],
+            "passages": [],
+            "target_text_sha256": "fb46e95c71f1981500e27eb388b8033558666b3adeda0a2aa0710e1ae4d779a3",
+            "presented_segment_ids": [],
+            "presented_segments_count": 0,
+            "source_chars_total": 119649,
+            "source_chars_inspected": 119649,
+            "budget_chars_used": 119649,
+            "truncated_at": false,
+            "coverage": "FULL",
+            "fetch_method": "web.render",
+            "fingerprint_in_consensus": true
+          }
+        ]
+      }
+    },
+    "scenario_claims_board": {
+      "title": "Scenario 3: ClaimsBoard Cross-Contract Integration & Badge Derivation",
+      "claimId": "175c4c8df043",
+      "citationId": "a984e9a3885e",
+      "publishTx": "0x218d9fcef79b2b813cf741f2635fc7f4c09cfd81095b7abeba0d039802b16a5a",
+      "publishAgree": "3/5",
+      "refreshTx": "0xf18d3cd4946c4a1cf1d071c15c5ebc60c844af8ea091d5c13e911c2bd2c3c203",
+      "refreshAgree": "4/5",
+      "initialBadge": "VERIFIED",
+      "refreshedBadge": "VERIFIED",
+      "badgeHistory": [
+        "VERIFIED"
+      ],
+      "claimRecord": {
+        "id": "175c4c8df043",
+        "headline": "Turing silver savings confirmed on Wikipedia",
+        "citation_id": "a984e9a3885e",
+        "publisher": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+        "published_at": "2026-10-16T04:32:34Z",
+        "published_at_ts": 1792125154,
+        "badge": "VERIFIED",
+        "badge_history": [
+          "VERIFIED"
+        ]
+      }
+    },
+    "scenario_cosmetic": {
+      "title": "Scenario 4: COSMETIC Drift Audit (Reworded phrasing, facts identical)",
+      "citationId": "a984e9a3885e",
+      "registerTx": "0xbbb159322de6f75b8e70df96802dd09935ef42b197e0a57d4d2aec37c63d31bf",
+      "registerAgree": "0/5",
+      "auditTx": "0x871e092e1bfd5b850d549eed00b0abed856ab973e646eca14b1f2c4372a0a631",
+      "auditAgree": "5/5",
+      "baselineUrl": "https://en.wikipedia.org/w/index.php?title=List_of_highest-grossing_films&oldid=1379571136",
+      "targetUrl": "https://en.wikipedia.org/w/index.php?title=List_of_highest-grossing_films&oldid=1379737814",
+      "targetKind": "REVISION",
+      "targetOldid": "1379737814",
+      "auditClass": "UNCHANGED",
+      "finalStatus": "HEALTHY",
+      "statusString": "HEALTHY|UNCHANGED|1|2026-10-16T04:31:04Z",
+      "record": {
+        "schema_version": "1.0.0",
+        "citation_id": "a984e9a3885e",
+        "label": "Alan Turing Silver Savings",
+        "registrant": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+        "registered_at": "2026-10-16T04:30:17Z",
+        "registered_at_ts": 1792125017,
+        "baseline_url": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+        "baseline_host": "en.wikipedia.org",
+        "baseline_title": "Alan Turing",
+        "baseline_oldid": "1379625434",
+        "elements": [
+          {
+            "id": "e1",
+            "quote": "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.",
+            "quote_sha256": "8d46387f626ab24f0c9d45334450386a8317e5a2d0176740ddf81149bf4e3aa7"
+          }
+        ],
+        "baseline_text_sha256": "7e102b03190967d1633aca1f9db0f91615219b3ce672a6bdd093129e93eff8b3",
+        "baseline_chars_total": 117662,
+        "fetch_method": "web.render",
+        "latest_audit_index": 0,
+        "status": "HEALTHY",
+        "audits_total": 1,
+        "audits": [
+          {
+            "n": 1,
+            "auditor": "0xd30E12185A62f555Ccb867B331B97eC5AA43787B",
+            "audited_at": "2026-10-16T04:31:04Z",
+            "audited_at_ts": 1792125064,
+            "target_url": "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
+            "target_kind": "REVISION",
+            "target_oldid": "1380390650",
+            "class": "UNCHANGED",
+            "elements": [
+              {
+                "id": "e1",
+                "status": "SAME",
+                "decided_by": "DETERMINISTIC",
+                "passage_id": null,
+                "cited_quote": "In the 1940s, Turing became worried about losing his savings in the event of a German invasion."
+              }
+            ],
+            "passages": [],
+            "target_text_sha256": "fb46e95c71f1981500e27eb388b8033558666b3adeda0a2aa0710e1ae4d779a3",
+            "presented_segment_ids": [],
+            "presented_segments_count": 0,
+            "source_chars_total": 119649,
+            "source_chars_inspected": 119649,
+            "budget_chars_used": 119649,
+            "truncated_at": false,
+            "coverage": "FULL",
+            "fetch_method": "web.render",
+            "fingerprint_in_consensus": true
+          }
+        ]
+      }
+    }
+  },
+  "negativeTests": {
+    "neg_quote_not_verbatim": {
+      "name": "Quote Not Verbatim in Baseline",
+      "fn": "register_citation",
+      "args": [
+        "Invalid Quote Test",
+        "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+        "[\"Albert Einstein formulated general relativity in 1915.\"]"
+      ],
+      "txHash": "0xd0b085359710df97e06fb5af0c01e978a3370e44d1fd9a49e8cf6c2631bfe40c",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "quote not found verbatim in baseline",
+      "expectedRevert": "quote not found verbatim in baseline"
+    },
+    "neg_non_permalink_baseline": {
+      "name": "Non-Permalink Baseline URL",
+      "fn": "register_citation",
+      "args": [
+        "Non-Permalink Test",
+        "https://en.wikipedia.org/wiki/Alan_Turing",
+        "[\"In the 1940s, Turing became worried about losing his savings in the event of a German invasion.\"]"
+      ],
+      "txHash": "0xcb130a1605d47797d89408bf885716e6cb222c5033dc0e24237c799d336a5dee",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "baseline must be an immutable revision permalink",
+      "expectedRevert": "baseline must be an immutable revision permalink"
+    },
+    "neg_older_target_revision": {
+      "name": "Target Revision Older or Equal to Baseline",
+      "fn": "audit_citation",
+      "args": [
+        "a984e9a3885e",
+        "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379624982"
+      ],
+      "txHash": "0x480b1ebb10a2cf5b6d38da671b22448033349d4c8d37250035bb340e6e9daed4",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "target revision must be later than baseline",
+      "expectedRevert": "target revision must be later than baseline"
+    },
+    "neg_cross_page_target": {
+      "name": "Cross-Page Target URL Mismatch",
+      "fn": "audit_citation",
+      "args": [
+        "a984e9a3885e",
+        "https://en.wikipedia.org/w/index.php?title=Alonzo_Church&oldid=1380390650"
+      ],
+      "txHash": "0x1c65f47fb909a80e2bd25c2f79ca6aad4859759a7933e8569229ca6ee2a8825e",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "target title must match baseline title",
+      "expectedRevert": "target title must match baseline title"
+    },
+    "neg_cross_host_target": {
+      "name": "Cross-Host Target URL Mismatch",
+      "fn": "audit_citation",
+      "args": [
+        "a984e9a3885e",
+        "https://de.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"
+      ],
+      "txHash": "0xd96459f768bf41792ea35c683d8db1d5bb1bac5ea191bf9b12fe09ab35660df4",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "target URL host must match baseline host",
+      "expectedRevert": "target URL host must match baseline host"
+    },
+    "neg_non_allowlisted_domain": {
+      "name": "Non-Allowlisted Domain",
+      "fn": "register_citation",
+      "args": [
+        "Evil Domain Test",
+        "https://evil.com/w/index.php?title=Alan_Turing&oldid=1000",
+        "[\"In the 1940s, Turing became worried about losing his savings in the event of a German invasion.\"]"
+      ],
+      "txHash": "0xdd36c191d0c979227f138ca14ef7029d166906d3808147ae22b112d4a15e52d8",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "4/5",
+      "revertPayload": "source URL must be a wikipedia.org language domain",
+      "expectedRevert": "source URL must be a wikipedia.org language domain"
+    },
+    "neg_userinfo_spoof": {
+      "name": "Userinfo URL Spoof",
+      "fn": "register_citation",
+      "args": [
+        "Userinfo Spoof Retry",
+        "https://user:pass@en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+        "[\"In the 1940s, Turing became worried about losing his savings in the event of a German invasion.\"]"
+      ],
+      "txHash": "0x5ede866537e381cea91f56207c2681999ccb0c972cbc29ad9993b97981a19256",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "source URL cannot contain userinfo",
+      "expectedRevert": "source URL cannot contain userinfo"
+    },
+    "neg_fragment_spoof": {
+      "name": "Fragment URL Spoof in Baseline",
+      "fn": "register_citation",
+      "args": [
+        "Fragment Spoof",
+        "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434#Section",
+        "[\"In the 1940s, Turing became worried about losing his savings in the event of a German invasion.\"]"
+      ],
+      "txHash": "0x8443bd13d58298ca3ade7fefcc2b5b730acb72804f4c5ab9142690f1093dd71a",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "baseline URL cannot contain fragment",
+      "expectedRevert": "baseline URL cannot contain fragment"
+    },
+    "neg_duplicate_registration": {
+      "name": "Duplicate Citation Registration",
+      "fn": "register_citation",
+      "args": [
+        "Duplicate Registration Attempt",
+        "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
+        "[\"In the 1940s, Turing became worried about losing his savings in the event of a German invasion.\"]"
+      ],
+      "txHash": "0x992ffbe72878a7a0a09cfdefce4f762e8674e1b8e72c7f674a879247cf34b490",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "5/5",
+      "revertPayload": "already registered",
+      "expectedRevert": "already registered"
+    },
+    "neg_repeated_target_audit": {
+      "name": "Repeated Target Revision Audit",
+      "fn": "audit_citation",
+      "args": [
+        "a984e9a3885e",
+        "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"
+      ],
+      "txHash": "0x5d8b4bb2b22b3c2692ab43ed2e0c20af6d89f665b47acd4524c65dda21d03849",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "target already audited",
+      "expectedRevert": "target already audited"
+    },
+    "neg_nonexistent_citation": {
+      "name": "Audit Nonexistent Citation",
+      "fn": "audit_citation",
+      "args": [
+        "000000000000",
+        "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"
+      ],
+      "txHash": "0x89ea8f911ae3248532f0ffd70f463afcd5b884cff0907349f3de96c812d1dbbc",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "citation not found",
+      "expectedRevert": "citation not found"
+    }
+  }
+}

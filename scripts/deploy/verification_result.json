@@ -1,0 +1,22 @@
+{
+  "SourceDriftLedger": {
+    "contract": "SourceDriftLedger",
+    "deployTxHash": "0x8058288116cb78df58dd1c5dd1a84383ac8bc6ea3ca1b3bd06b81f2beb40d874",
+    "rpcMethod": "eth_getTransactionByHash",
+    "rpcField": "result.data.contract_code",
+    "localSha256": "e3b4bf9ce11e5f418126585820916f442bd22f23610bbfdb3a3de8065eeb3bd8",
+    "chainSha256": "e3b4bf9ce11e5f418126585820916f442bd22f23610bbfdb3a3de8065eeb3bd8",
+    "match": true,
+    "sourceBytesLength": 41891
+  },
+  "ClaimsBoard": {
+    "contract": "ClaimsBoard",
+    "deployTxHash": "0x4865176578ebf2b800c5fe61ca75a0bcafddf8f6464bb8ace32b2134824fc04c",
+    "rpcMethod": "eth_getTransactionByHash",
+    "rpcField": "result.data.contract_code",
+    "localSha256": "3fc42682eebb7522edb5d0039969fea0232456596a37eda9f1ce698639ee3a10",
+    "chainSha256": "3fc42682eebb7522edb5d0039969fea0232456596a37eda9f1ce698639ee3a10",
+    "match": true,
+    "sourceBytesLength": 7192
+  }
+}
