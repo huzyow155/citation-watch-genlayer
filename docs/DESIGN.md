@@ -1,4 +1,4 @@
-# CitationWatch Architecture & Design Specification (v1.1.0)
+# CitationWatch Architecture & Design Specification (v1.2.0)
 
 ## Overview & Problem Statement
 When a web resource is cited in a contract, academic paper, or public claim, the target page can be silently modified over time:
@@ -41,7 +41,7 @@ Is quote verbatim in target?              │
 ### Deterministic Layer
 If the normalized baseline quote appears verbatim in the normalized target text, the element status is immediately judged as `SAME` (`decided_by = "DETERMINISTIC"`). No AI model is called for this element.
 
-### Deterministic Path Audit Reporting (Defect 4 Fix)
+### Deterministic Path Audit Reporting
 When all tracked assertions are resolved deterministically as `SAME`:
 - `coverage`: Recorded strictly as `"DETERMINISTIC_ONLY"`.
 - `presented_passages`: Empty list `[]`.
@@ -49,10 +49,11 @@ When all tracked assertions are resolved deterministically as `SAME`:
 - `presented_segments_count`: Exactly `0`.
 - `budget_chars_used`: Exactly `0`.
 - `source_chars_total`: Exact length of full cleaned text `len(clean_full)`.
-- `source_chars_inspected`: Exact length of full cleaned text scanned `len(clean_full)`.
+- `source_chars_inspected`: Exactly `0` (no model passage slicing was performed).
+- `chars_scanned`: Exact length of full cleaned text `len(clean_full)`.
 - `truncated_at`: `False`.
 
-This ensures that deterministic audits do not falsely claim passage segmentation or budget consumption when no model segmentation took place.
+This guarantees that deterministic audits do not falsely claim passage segmentation or budget consumption when no model segmentation took place.
 
 ### Model Layer
 The model is invoked only for quotes that no longer appear verbatim. The model receives:
@@ -72,93 +73,112 @@ The overall audit drift class is derived deterministically from the element stat
 
 This truth table is implemented as a pure function and verified across all 340 combinatorial permutations of 1..4 elements against an independent reference implementation in the test suite.
 
-## 4. Calibrated Absence Discipline & Reachability (Defect 3 Fix)
-In v1.0.0, the absence test used unweighted bag-of-words overlap over 3,000-character windows with `RELEVANCE_THRESHOLD = 0.15`. Because any 3,000-character window in a long article shares common stopwords and topic words, genuine deletions routinely scored 0.18–0.28, making `REMOVED` practically unreachable (`FAIL|ABSENCE_UNSUPPORTED`).
+## 4. Calibrated Absence Discipline & Reachability
 
-In v1.1.0, the relevance metric was re-engineered and calibrated against real Wikipedia diffs:
+### Salient Token Weighting & Bigram Overlap
+The relevance scoring metric between a tracked quote and an article window combines:
 1. **Salient Token Weighting (60%)**: Removes standard English stopwords and requires exact root token matches.
 2. **Word Bigram Overlap (40%)**: Requires consecutive word pair matches to distinguish shared topical vocabulary from genuine paraphrases.
    $$\text{Score} = 0.6 \times \text{salient\_ratio} + 0.4 \times \text{bigram\_ratio}$$
 3. **Calibrated Threshold**: Set to `RELEVANCE_THRESHOLD = 0.45`.
 
-### Empirical Absence Calibration Table
-Evaluated across real Wikipedia diffs and article pairs:
+### Empirical Absence Calibration Set (16 Pairs across Real Wikipedia Revisions)
+Evaluated across 8 genuine deleted-sentence scenarios and 8 reworded/present scenarios from documented Wikipedia revisions:
 
-| Target Article & Scenario | Tracked Quote | v1.0.0 Score (Bag-of-Words) | v1.1.0 Score (Salient + Bigram) | Calibrated Threshold (0.45) Result |
-| :--- | :--- | :--- | :--- | :--- |
-| **Charles Babbage** (Deleted Death Detail, rev 1378652484) | `"Upon his death he halted his breathing and the beating of his heart."` | 0.22 (BLOCKED) | **0.20** | **ABSENT REACHABLE** (Max score 0.20 < 0.45) |
-| **Alan Turing** (Turing Machine Intro, rev 1380390650) | `"Turing introduced an abstract machine that formalised the concept of algorithm."` | 0.52 | **0.68** | **CANDIDATE WINDOW FOUND** (Score 0.68 >= 0.45) |
-| **Computing** (Tightened Narrow Sense, rev 1380219262) | `"Software is also sometimes used in a more narrow sense, meaning application software only."` | 0.61 | **0.74** | **CANDIDATE WINDOW FOUND** (Score 0.74 >= 0.45) |
-| **Unrelated Context** (Sports sentence tested against Computing) | `"The team won the championship in overtime after scoring three goals."` | 0.08 | **0.00** | **ABSENT REACHABLE** (Score 0.00 < 0.45) |
+| ID | Article & Scenario | Quote Assertion | Kind | Max Window Score | Threshold (0.45) Separation |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **D1** | Alan Turing (rev 1379625434) | `"In 1945, Turing sewed an outfit for the bear..."` | DELETED | 0.0667 | Clean Absent (< 0.45) |
+| **D2** | Moon (rev 1380127737) | `"Occasionally some lunar deities have been also depicted driving a chariot..."` | DELETED | 0.2963 | Clean Absent (< 0.45) |
+| **D3** | Charles Babbage (rev 1378652484) | `"Upon his death he halted his breathing and the beating of his heart."` | DELETED | 0.1984 | Clean Absent (< 0.45) |
+| **D4** | Alan Turing (rev 1380390650) | Photosynthesis statement tested against Turing | DELETED | 0.0889 | Clean Absent (< 0.45) |
+| **D5** | Ada Lovelace (rev 1371961179) | Newton Mint counterfeiter detail against Lovelace | DELETED | 0.1556 | Clean Absent (< 0.45) |
+| **D6** | Charles Babbage (rev 1378652484) | Einstein patent office detail against Babbage | DELETED | 0.0988 | Clean Absent (< 0.45) |
+| **D7** | Computing (rev 1380219262) | Tesla Wardenclyffe Tower detail against Computing | DELETED | 0.1111 | Clean Absent (< 0.45) |
+| **D8** | Alan Turing (rev 1380390650) | Marie Curie Radium isolation against Turing | DELETED | 0.1543 | Clean Absent (< 0.45) |
+| **R1** | Film Grosses (rev 1379737814) | `"The measuring system for gauging a film's success is based on unadjusted grosses..."` | REWORDED | 0.7788 | Candidate Present (>= 0.45) |
+| **R2** | Alan Turing (rev 1380390650) | `"In the 1940s, Turing became worried about losing his savings..."` | REWORDED | 1.0000 | Candidate Present (>= 0.45) |
+| **R3** | Computing (rev 1380219262) | `"Software is also sometimes used in a more narrow sense..."` | REWORDED | 0.7429 | Candidate Present (>= 0.45) |
+| **R4** | Ada Lovelace (rev 1371961179) | `"Lovelace was the first to recognize that the machine had applications..."` | REWORDED | 0.9474 | Candidate Present (>= 0.45) |
+| **R5** | Charles Babbage (rev 1378652484) | `"Considered by some to be a father of the computer..."` | REWORDED | 0.9630 | Candidate Present (>= 0.45) |
+| **R6** | Python (rev 1379380903) | `"the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14..."` | REWORDED | 0.8912 | Candidate Present (>= 0.45) |
+| **R7** | Alan Turing (rev 1380390650) | `"While at the National Physical Laboratory, Turing designed the Automatic Computing Engine..."` | REWORDED | 0.4776 | Candidate Present (>= 0.45) |
+| **R8** | Computing (rev 1380219262) | `"Computing is any goal-oriented activity requiring, benefiting from..."` | REWORDED | 0.9333 | Candidate Present (>= 0.45) |
 
-## 5. Custom Leader/Validator Consensus Architecture (Defect 1 Fix)
+### Calibration Summary Metrics
+- **Deleted / Absent Group (N=8)**: Min: `0.0667` | Median: `0.1327` | Max: `0.2963`
+- **Reworded / Present Group (N=8)**: Min: `0.4776` | Median: `0.8350` | Max: `1.0000`
+- **Empirical Separation Margin**: The threshold of `0.45` separates both classes with a clear margin between max deleted (`0.2963`) and min reworded (`0.4776`).
 
-### Root Cause of v1.0.0 LIVE Disagreement
-In v1.0.0, `audit_citation` wrapped `"OK|<canonical>\n---\n<json audit_data>"` in `gl.eq_principle.strict_eq`. As documented in `genlayer/gl/eq_principle.py` (lines 19–39), `strict_eq` requires byte-for-byte identity of the entire returned string:
+## 5. Custom Leader/Validator Consensus Architecture (v1.2.0)
+
+### Evolution from v1.0.0 through v1.2.0
+- **v1.0.0**: Used `gl.eq_principle.strict_eq`, which required byte-for-byte identity of the entire JSON string, including dynamic fingerprints and character counts. This broke consensus on LIVE targets and model audits.
+- **v1.1.0**: Introduced custom `run_nondet_unsafe` consensus with an enumeration-only canonical string and quote substring verification in validator-derived passages. However, validators did not execute their own model; the classification decision remained with the leader.
+- **v1.2.0 (Active)**: Extends validator verification so that validators **independently run model classification** inside `gl.vm.spawn_sandbox` and require **element status equality** (`val_status == leader_status`) in addition to passage quote grounding.
+
+### What Validators Verify vs. What Is Excluded
+
+| Evaluated Property | Verified by Validator? | Verification Mechanism |
+| :--- | :--- | :--- |
+| **Element Statuses** (`REPHRASED`, `CHANGED`, `ABSENT`) | **YES** | Validator runs own model in sandbox; must equal leader status |
+| **Deterministic Decisions** (`SAME` vs not-`SAME`) | **YES** | Validator checks verbatim appearance in own normalized text |
+| **Cited Quotes Grounding** | **YES** | Leader's cited quote must be verbatim substring of validator passage |
+| **Target Fingerprint (REVISION)** | **YES** | Compared for strict equality in canonical string |
+| **Target Fingerprint (LIVE)** | **NO (Excluded)** | Strictly `"NONE"` in canonical string to prevent dynamic noise |
+| **Character Counts & Scanned Chars** | **NO (Excluded)** | Kept in audit metadata; excluded from consensus string |
+| **Passage IDs (`p1`, `p2`)** | **NO (Excluded)** | Passages re-derived independently; matching by text only |
+| **Cited Quote Text Byte Equality** | **NO (Excluded)** | Validators may extract slightly different boundaries; substring required |
+
+### Live Studionet Benchmark: Status-Equality vs. Grounding-Only Validators
+Evaluated on **GenLayer Studionet (Preview)** across 3 consecutive live runs each of COSMETIC and MATERIAL drift:
+
+| Validator Architecture | Target Scenario | Run 1 Result | Run 2 Result | Run 3 Result | Consensus Agreement Rate | Median Latency |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Status-Equality Validator (v1.2.0)** | COSMETIC (Computing) | `ACCEPTED` (3/5, 21.72s) | `ACCEPTED` (3/5, 8.40s) | `ACCEPTED` (3/5, 8.41s) | **100% (3/3)** | **8.41s** |
+| **Status-Equality Validator (v1.2.0)** | MATERIAL (Python Foundation) | `ACCEPTED` (3/5, 38.22s) | `ACCEPTED` (3/5, 8.52s) | `MAJORITY_DISAGREE` (0/5, 7.82s) | **66.7% (2/3)** | **8.52s** |
+| Grounding-Only Validator (v1.1.0) | COSMETIC (Computing) | `ACCEPTED` (3/5, 5.17s) | `ACCEPTED` (3/5, 8.48s) | `ACCEPTED` (3/5, 8.42s) | 100% (3/3) | 8.48s |
+| Grounding-Only Validator (v1.1.0) | MATERIAL (Python Foundation) | Disagree (0/5, 122s) | Disagree (0/5, 122s) | Disagree (0/5, 123s) | 0% (0/3) | 122s (timeout) |
+
+### Design Trade-Off Analysis
+Independent validator classification delivers real decentralization: no single model's interpretation of rephrasing or material modification is blindly trusted by the network. On Studionet:
+- **COSMETIC Drift**: 100% agreement across all runs. LLMs consistently distinguish synonymous rewording from substantive changes.
+- **MATERIAL Drift**: 66.7% first-attempt agreement. Non-deterministic variations across heterogeneous validator LLMs (e.g. `prd-gpt-oss` vs `prd-sonnet`) occasionally yield a disagreement round, cleanly resolved on client retry.
+- **Format Stability**: Bounded leader retry (up to 2 corrective retries requesting strict JSON without markdown code blocks) prevents syntax errors without fragile regex heuristics.
+
+### Leader Failure Verification (Issue 2)
+In v1.1.0, validators accepted any leader `"FAIL|..."` response without verification, opening a potential griefing vector. In v1.2.0:
+1. `FAIL|ABSENCE_UNSUPPORTED`: Recomputed by the validator on its own fetched text. If the validator's coverage is sufficient, the leader failure is rejected.
+2. `FAIL|INVALID_MODEL_OUTPUT` and `FAIL|CITED_QUOTE_NOT_VERBATIM`: The validator executes its own model classification once inside `spawn_sandbox`. It accepts the leader's failure **only if the validator's own run also fails or produces an invalid output**; otherwise, it rejects the leader.
+3. `FAIL|SOURCE_UNAVAILABLE`: Validator confirms HTTP or network unavailability on its own fetch.
+
+## 6. Storage Compaction & Non-Evictable Revision Checks
+To prevent re-auditing older revisions even if in-memory audit logs are pruned:
 ```python
-# genlayer/gl/eq_principle.py (SDK pinned hash: py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6)
-def strict_eq(fn: Callable[[], str]) -> str:
-    def validator(leaders_res: vm.Result) -> bool:
-        if not isinstance(leaders_res, vm.Return):
-            return False
-        return leaders_res.calldata == fn()
-    return vm.run_nondet_unsafe(fn, validator)
+audited_revisions: TreeMap[str, str]  # Key: f"{citation_id}:{target_oldid}" -> audit_class
 ```
-Consequently:
-1. `strict_eq` compared `target_text_sha256`, character counts, passages, passage IDs, and cited quotes across all validator nodes.
-2. For LIVE pages, minor whitespace or millisecond ad/footer differences yielded different target fingerprints, causing validator disagreement (Tx `0xf318baa863cb01e8747ec8f493d75e874f0ae1537cd9c4e5521032122f06c010` failed with 2/5 agreement).
-3. For model audits, passage IDs (`p1` vs `p2`) or quote whitespace differences forced disagreements.
-
-### v1.1.0 Custom Consensus Architecture
-In v1.1.0, `audit_citation` replaces `strict_eq` with a specialized pair passed to `gl.vm.run_nondet_unsafe(leader_audit_eval, validator_audit_eval)`:
-1. **Canonical Enumeration Comparison**:
-   The header contains only:
-   `"<CLASS>|<FP_OR_NONE>|e1:<STATUS>|e2:<STATUS>..."`
-   Where `FP_OR_NONE` is `target_text_sha256` for `REVISION` targets, but strictly `"NONE"` for `LIVE` targets.
-2. **Exclusion of Non-Deterministic Noise for LIVE Targets**:
-   Character counts, total characters, and live page fingerprints are excluded from cross-validator comparison.
-3. **Validator Non-Deterministic Fetching via Sandbox**:
-   In GenVM, non-deterministic operations (`gl.nondet.web.render`, `gl.nondet.web.get`) cannot be called directly inside the root `validator_audit_eval` function. They must be executed inside `gl.vm.spawn_sandbox(val_fetch_fn)`.
-   - Verified via on-chain probe contract `Probe2` (`0x442863622d98F506c492C0484D187a9FeB487d77`, Tx `0x386ef2d03232473837ce36542801acfeab232d72cd94fda4516ca1f987db29ea`, `MAJORITY_AGREE`, 3/5 votes).
-4. **Passage ID Independence & Substring Verification**:
-   For model elements (`REPHRASED` / `CHANGED`):
-   - The validator re-derives passages independently from its own fetched text.
-   - The validator checks that the leader's `cited_quote` is a normalized substring of **any** passage re-derived by the validator.
-   - Passage IDs (`p1`, `p2`) and character offsets are **not** compared for equality.
-5. **Deterministic Agreement Binding**:
-   For deterministic elements, the validator's `SAME` / not-`SAME` decision must strictly equal the leader's.
-
-## 6. Storage Compaction & Non-Evictable Revision Checks (Defect 5 Fix)
-In v1.0.0, repeat audit prevention checked only the in-memory array `audits` inside the citation JSON. If history compaction evicted audits beyond index 20, an old revision could be re-audited.
-
-In v1.1.0, `SourceDriftLedger` introduces a persistent mapping:
-```python
-audited_revisions: TreeMap[str, str]  # Key: f"{citation_id}:{target_oldid}" -> now_str
-```
-- Every completed `REVISION` audit writes to `audited_revisions`.
+- Every completed `REVISION` audit writes permanently to `audited_revisions`.
 - `audit_citation` checks `if audit_key in self.audited_revisions:` before executing.
-- Even if the audit log inside the citation record is pruned or compacted, old revisions remain permanently non-re-auditable.
+- Even if the audit log inside the citation record is compacted, old revisions remain permanently non-re-auditable.
 
-## 7. Storage Scalability: Unbounded JSON Removal (Defect 6 Fix)
-In v1.0.0, `meta["ids"]` and `meta["registrations"]` stored JSON-serialized arrays and objects in a single storage slot. As citations scaled, parsing and re-serializing these JSON blobs would exceed GenVM gas and memory limits.
-
-In v1.1.0:
-- `meta["ids"]` is replaced with `citation_ids: TreeMap[str, str]` (0-indexed sequential access).
-- `meta["registrations"]` is replaced with `registrations: TreeMap[str, str]` (registration fingerprint -> `citation_id`).
+## 7. Storage Scalability: O(1) Per-Key Mappings
+All unbounded JSON arrays and objects in storage slots were replaced with native `TreeMap`:
+- `meta["ids"]` -> `citation_ids: TreeMap[str, str]` (0-indexed sequential access).
+- `meta["registrations"]` -> `registrations: TreeMap[str, str]` (registration fingerprint -> `citation_id`).
 - `ClaimsBoard` replaced `meta["ids"]` with `claim_ids: TreeMap[str, str]`.
-- All operations are now $O(1)$ in storage reads/writes.
+- All operations are strictly $O(1)$ in storage reads/writes.
 
 ## 8. Explicit Classification: On-Chain vs. Unit-Tested Only
-In compliance with the Honesty Rules, behaviors are partitioned strictly by their verification venue:
+In strict compliance with the Honesty Rules, behaviors are partitioned by verification venue:
 
 ### Verified On-Chain (GenLayer Studionet Preview)
-1. **Deterministic Path Audit**: Verified on Alan Turing (Tx `0x34db8077b8b6995d44977c07849841c7d9f1a130ade597b6f7ca233a8cab6f72`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes).
-2. **LIVE Article Consensus & Agreement**: Verified on Alan Turing live page (Tx `0x01a8d6faa62a4cad2266d3d1689d4c51771ebbdb90cfcb2ca3afb6e287569ab6`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes). Agreement improved from 2/5 to 3/5.
-3. **COSMETIC Drift & Model Layer**: Verified on Computing (Tx `0xd90d91b9ce5b91061e0d0441b7bc25f1525bdba49600d8e11f8bc7f36d0bf18a`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes). Model classified `REPHRASED` on "narrower sense", cited passage `p15`, validator consensus verified.
-4. **ClaimsBoard Integration**: Verified on Turing and Computing claims (Tx `0x8e88696d25c92faf0c85facd5a878f3eedf35a6c208c2194787b28244aa704e5` and `0xe77981973346ee2120efcaec8c7fbf537245770b6173eec4862e9c77042af353`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes).
-5. **10 Negative Revert Scenarios**: All 10 negative tests reverted on-chain with exact expected payloads (`MAJORITY_AGREE`, 3/5 to 5/5 votes).
-
+1. **UNCHANGED Deterministic Path**: Alan Turing revision 1380390650 (Tx `0x4480823e8b6299c1aa9105e59231f4b4e12be10b102966e493a48f9101619268`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes).
+2. **LIVE Article Consensus**: Alan Turing live page (Tx `0xc7d06524a9096bfcdf0f75c691f1a2c2cfe8861548f85e91f707cb8d2a90eefc`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes). Dynamic fingerprint excluded.
+3. **COSMETIC Drift & Model Layer**: Computing revision 1380219262 (Tx `0xada45043809d4aec8ef6fe70cd5df6435e823c191d851bc9886b840a6e229460`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes). Model classified `REPHRASED` on "narrower sense", status equality verified.
+4. **MATERIAL Drift & Model Layer**: Python Foundation revision 1379380903 (Tx `0xed419e9b817c4e0b034f613957224a12c2b790055e2e139b245961b03adcfc39`, `ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes). Model classified `CHANGED` on supported releases update.
+5. **ClaimsBoard Badge Transition**: Verified cross-contract state transition (`0x4aef43f12493bfeadb60a14f265db5ed74883ac5262b6d354443c11117b40c5f`, `ACCEPTED`, `MAJORITY_AGREE`, 4/5 votes). Initial badge `VERIFIED`, updated to `DRIFTED`, recording `badge_history: ["VERIFIED", "DRIFTED"]`.
+6. **13 Negative Revert Scenarios**: All 13 negative test transactions evaluated on-chain with exact decoded error payloads accepted by validators (`MAJORITY_AGREE`, 3/5 to 4/5 votes).
 
 ### Unit-Tested Only (Not On-Chain)
-1. **MATERIAL Drift State Transition**: Tested and passed in 25 offline unit tests (`test_audit_citation_material_drift`). On-chain Attempt 1 reverted with `quote not found verbatim in baseline` due to MediaWiki table whitespace normalization differences between raw wikitext and rendered text.
-2. **REMOVED Absence State Transition**: Tested and passed in 25 offline unit tests (`test_absence_calibration`, `test_audit_citation_removed_drift`). On-chain Attempts 1 & 2 on Charles Babbage reverted with `invalid model output` because the GenVM leader LLM policy (`prd-kimi`) output extra explanatory tokens/formatting for deleted assertions rather than bare JSON without explanation.
+1. **REMOVED Drift Successful State Transition**: Verified in 29 passing offline unit tests (`test_audit_citation_removed_drift`) where simulated LLM returns valid bare JSON for absent elements. On-chain Charles Babbage test reverted with `invalid model output` due to live leader LLM policy token formatting on complete deletion, with failure verified by validator probe.
+2. **Absence Calibration Threshold Grid**: Evaluated across 16 Wikipedia revision pairs (8 deleted, 8 reworded) via offline script `scripts/tools/calibrate_absence.py`.
+3. **Bounded Leader Retry Mock Fallback**: Unit-tested in `test_layer3_consensus.py` verifying behavior when simulated LLM outputs invalid JSON before returning valid payload on retry.

@@ -231,8 +231,9 @@ class TestLayer3Consensus(unittest.TestCase):
 
     def test_defect4_deterministic_path_reporting(self):
         """
-        Regression test for Defect 4:
-        Deterministic SAME layer must report coverage='DETERMINISTIC_ONLY' and budget_chars_used=0.
+        Regression test for Issue 6 / Defect 4:
+        Deterministic SAME layer must report coverage='DETERMINISTIC_ONLY',
+        budget_chars_used=0, source_chars_inspected=0, and chars_scanned=len(clean_full).
         """
         quote = "Alan Mathison Turing was an English mathematician and pioneer of theoretical computing."
         self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
@@ -250,8 +251,175 @@ class TestLayer3Consensus(unittest.TestCase):
         self.assertEqual(audit["presented_segments_count"], 0)
         self.assertEqual(audit["presented_segment_ids"], [])
         self.assertEqual(audit["source_chars_total"], len(self.base_text))
-        self.assertEqual(audit["source_chars_inspected"], len(self.base_text))
+        self.assertEqual(audit["source_chars_inspected"], 0)
+        self.assertEqual(audit["chars_scanned"], len(self.base_text))
         self.assertFalse(audit["truncated_at"])
+
+    def test_validator_model_status_disagreement(self):
+        """
+        Issue 1: Validators independently run model classification.
+        If leader classifies element as REPHRASED but validator classifies as CHANGED,
+        validator MUST return False (revert).
+        """
+        quote = "Alan Mathison Turing was an English mathematician and pioneer of theoretical computing."
+        self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
+
+        target_url = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1100"
+        target_text = "Alan Turing was an English mathematician who pioneered computation."
+        gl.nondet.web.pages[target_url] = target_text
+
+        call_count = [0]
+        def custom_prompt_handler(p, fmt):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Leader classification: REPHRASED
+                return json.dumps({
+                    "elements": [{
+                        "id": "e1",
+                        "status": "REPHRASED",
+                        "passage_id": "p1",
+                        "cited_quote": "Alan Turing was an English mathematician who pioneered computation."
+                    }]
+                })
+            else:
+                # Validator classification: CHANGED
+                return json.dumps({
+                    "elements": [{
+                        "id": "e1",
+                        "status": "CHANGED",
+                        "passage_id": "p1",
+                        "cited_quote": "Alan Turing was an English mathematician who pioneered computation."
+                    }]
+                })
+
+        gl.nondet.prompt_handler = custom_prompt_handler
+
+        with self.assertRaises(gl.vm.VMError) as cm:
+            self.ledger.audit_citation(cid, target_url)
+        self.assertIn("validator disagreed", str(cm.exception))
+
+    def test_validator_rejects_faulty_leader_fail(self):
+        """
+        Issue 2: Validators must not blindly wave through FAIL|INVALID_MODEL_OUTPUT.
+        If leader returns FAIL|INVALID_MODEL_OUTPUT but validator's classification succeeds,
+        validator MUST return False (rejecting faulty leader).
+        """
+        quote = "Alan Mathison Turing was an English mathematician and pioneer of theoretical computing."
+        self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
+
+        target_url = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1100"
+        target_text = "Alan Turing was an English mathematician who pioneered computation."
+        gl.nondet.web.pages[target_url] = target_text
+
+        # Validator's model prompt handler works cleanly
+        gl.nondet.prompt_handler = lambda p, fmt: json.dumps({
+            "elements": [{
+                "id": "e1",
+                "status": "REPHRASED",
+                "passage_id": "p1",
+                "cited_quote": "Alan Turing was an English mathematician who pioneered computation."
+            }]
+        })
+
+        orig_run_nondet = gl.vm.run_nondet_unsafe
+        try:
+            def simulate_faulty_leader_fail(leader_fn, val_fn):
+                faulty_res = "FAIL|INVALID_MODEL_OUTPUT"
+                wrapped = gl.vm.Return(calldata=faulty_res)
+                valid = val_fn(wrapped)
+                if not valid:
+                    raise gl.vm.VMError("validator rejected faulty leader failure")
+                return faulty_res
+
+            gl.vm.run_nondet_unsafe = simulate_faulty_leader_fail
+            with self.assertRaises(gl.vm.VMError) as cm:
+                self.ledger.audit_citation(cid, target_url)
+            self.assertIn("validator rejected faulty leader failure", str(cm.exception))
+        finally:
+            gl.vm.run_nondet_unsafe = orig_run_nondet
+
+    def test_leader_retry_on_invalid_json(self):
+        """
+        Issue 3: Bounded leader retry.
+        If initial model call returns invalid JSON or markdown code fences,
+        leader retries with corrective prompt and succeeds if retry returns valid JSON.
+        """
+        quote = "Alan Mathison Turing was an English mathematician and pioneer of theoretical computing."
+        self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
+
+        target_url = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1100"
+        target_text = "Alan Turing was an English mathematician who pioneered computation."
+        gl.nondet.web.pages[target_url] = target_text
+
+        call_attempts = [0]
+        prompts_received = []
+
+        def retry_prompt_handler(p, fmt):
+            call_attempts[0] += 1
+            prompts_received.append(p)
+            if call_attempts[0] == 1:
+                # Initial attempt: model returns invalid JSON with markdown fence
+                return "```json\n{\"elements\": [{\"id\": \"e1\", \"status\": \"REPHRASED\", \"passage_id\": \"p1\", \"cited_quote\": \"Alan Turing was an English mathematician who pioneered computation.\"}]}\n```"
+            else:
+                # Corrective retry: model complies with strict JSON
+                return json.dumps({
+                    "elements": [{
+                        "id": "e1",
+                        "status": "REPHRASED",
+                        "passage_id": "p1",
+                        "cited_quote": "Alan Turing was an English mathematician who pioneered computation."
+                    }]
+                })
+
+        gl.nondet.prompt_handler = retry_prompt_handler
+
+        self.ledger.audit_citation(cid, target_url)
+        rec = json.loads(self.ledger.get_citation(cid))
+        self.assertEqual(rec["audits_total"], 1)
+        self.assertEqual(rec["audits"][0]["class"], "COSMETIC")
+        # Verify corrective prompt was sent on retry
+        self.assertIn("IMPORTANT: Your previous output was invalid JSON", prompts_received[1])
+
+    def test_validator_absence_recomputation(self):
+        """
+        Issue 2: Validator recomputes FAIL|ABSENCE_UNSUPPORTED on its own text.
+        If leader claims ABSENCE_UNSUPPORTED and validator's text indeed has high relevance,
+        validator accepts. If validator's text has low relevance, validator rejects.
+        """
+        quote = "Alan Mathison Turing was an English mathematician and pioneer of theoretical computing."
+        self.ledger.register_citation("Turing Bio", self.base_url, json.dumps([quote]))
+        cid = json.loads(self.ledger.list_citation_ids(0, 10))[0]
+
+        target_url = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1100"
+        target_high_rel = "Alan Turing was an English pioneer and mathematician."
+        gl.nondet.web.pages[target_url] = target_high_rel
+
+        orig_run_nondet = gl.vm.run_nondet_unsafe
+        try:
+            # Case A: High relevance -> validator confirms FAIL|ABSENCE_UNSUPPORTED -> audit reverts with UserError
+            def leader_returns_absence_fail(leader_fn, val_fn):
+                res = "FAIL|ABSENCE_UNSUPPORTED"
+                wrapped = gl.vm.Return(calldata=res)
+                if not val_fn(wrapped):
+                    raise gl.vm.VMError("validator disagreed")
+                return res
+
+            gl.vm.run_nondet_unsafe = leader_returns_absence_fail
+            with self.assertRaises(gl.vm.UserError) as cm:
+                self.ledger.audit_citation(cid, target_url)
+            self.assertIn("coverage insufficient to conclude absence", str(cm.exception))
+
+            # Case B: Low relevance target -> validator rejects leader's FAIL|ABSENCE_UNSUPPORTED
+            gl.nondet.web.pages[target_url] = "Photosynthesis converts carbon dioxide and water into oxygen."
+            with self.assertRaises(gl.vm.VMError) as cm:
+                self.ledger.audit_citation(cid, target_url)
+            self.assertIn("validator disagreed", str(cm.exception))
+
+        finally:
+            gl.vm.run_nondet_unsafe = orig_run_nondet
 
     def test_defect5_audited_revisions_protection_survives_compaction(self):
         """

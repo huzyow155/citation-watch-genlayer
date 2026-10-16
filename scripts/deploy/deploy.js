@@ -134,8 +134,8 @@ async function main() {
       if (prev.ledger && prev.claimsBoard) {
         superseded.push({
           archivedAt: new Date().toISOString(),
-          version: prev.ledger.contractAddress === "0x0d24CC10b5396C718c019E239c90c7eE6b17BE57" ? "1.0.0" : "1.1.0-pre",
-          reason: "Superseded by v1.1.0 (consensus payload, model-layer evidence, and spawn_sandbox fixes)",
+          version: "1.1.0",
+          reason: "Superseded by v1.2.0 (validator-side classification, bounded leader retry, deterministic chars_scanned reporting)",
           ledger: prev.ledger,
           claimsBoard: prev.claimsBoard,
         });
@@ -148,6 +148,7 @@ async function main() {
   const deployments = {
     network: "GenLayer Studionet (Preview)",
     chainId: 61999,
+    version: "1.2.0",
     rpc: RPC_URL,
     explorerBase: "https://explorer-studio.genlayer.com",
     deployerAddress: account.address,

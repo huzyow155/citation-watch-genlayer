@@ -40,3 +40,26 @@ class Probe2(gl.Contract):
 
         res = gl.vm.run_nondet_unsafe(leader, validator)
         self.res = str(res)
+
+    @gl.public.write
+    def test_validator_prompt(self, test_msg: str) -> None:
+        def leader() -> str:
+            r = gl.nondet.exec_prompt("Echo strictly JSON {\"echo\": \"" + str(test_msg) + "\"}", response_format="json")
+            return "LEADER:" + str(r)
+
+        def validator(leaders_res: gl.vm.Result) -> bool:
+            if not isinstance(leaders_res, gl.vm.Return):
+                return False
+
+            def val_call() -> str:
+                return gl.nondet.exec_prompt("Echo strictly JSON {\"echo\": \"" + str(test_msg) + "\"}", response_format="json")
+
+            sand_res = gl.vm.spawn_sandbox(val_call)
+            if not isinstance(sand_res, gl.vm.Return):
+                return False
+
+            val_res = str(sand_res.calldata)
+            return len(val_res) > 0
+
+        res = gl.vm.run_nondet_unsafe(leader, validator)
+        self.res = str(res)

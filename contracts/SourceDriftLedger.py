@@ -10,7 +10,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from genlayer import *
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 MIN_QUOTE_CHARS = 30
 MAX_QUOTE_CHARS = 240
 MAX_ELEMENTS = 4
@@ -508,6 +508,149 @@ def _fetch_page_text(target_url: str) -> tuple[str, str]:
     return (clean_full, fetch_method)
 
 
+def _classify_unresolved_elements(
+    passages: list[dict],
+    unresolved_ids: list[str],
+    raw_quotes_map: dict[str, str],
+    norm_full: str,
+) -> tuple[str, dict[str, dict]]:
+    """
+    Executes model classification on unresolved quotes against presented passages:
+    - Bounded retry (initial attempt + up to 2 corrective retries requesting strict JSON).
+    - Validates strict JSON output and required schema without code fences or regex repair.
+    - Runs absence discipline check (relevance threshold < 0.45 across all windows).
+    - Verifies cited quotes are verbatim substrings in the specified passage.
+    Returns: (status_code, element_results_dict)
+    where status_code is 'OK' or 'FAIL|...'
+    """
+    if not unresolved_ids:
+        return ("OK", {})
+
+    passages_block = "\n".join(f"[{p['id']}] {p['text']}" for p in passages)
+    elements_to_classify = [{"id": eid, "quote": raw_quotes_map[eid]} for eid in unresolved_ids]
+    passages_by_id = {p["id"]: p for p in passages}
+
+    base_prompt = (
+        "You are a strict citation drift classifier.\n"
+        "Evaluate each tracked quote against the presented passages from the target document.\n"
+        "For each element, decide its status:\n"
+        "- REPHRASED: the target asserts the exact same assertion, facts, numbers, and entities using different wording.\n"
+        "- CHANGED: the target asserts something that conflicts (different number, entity, outcome, or polarity).\n"
+        "- ABSENT: the presented passages do not address this assertion at all.\n\n"
+        "Rules:\n"
+        "1. For REPHRASED and CHANGED, you MUST provide 'passage_id' (e.g. \"p1\") and 'cited_quote' copied verbatim from that passage.\n"
+        "2. For ABSENT, 'passage_id' must be null and 'cited_quote' must be null.\n"
+        "3. Return strictly a JSON object with key 'elements'. No extra keys, no markdown code blocks.\n\n"
+        "PRESENTED PASSAGES:\n"
+        f"{passages_block}\n\n"
+        "ELEMENTS TO CLASSIFY:\n"
+        f"{json.dumps(elements_to_classify, indent=2)}\n\n"
+        "Required JSON format:\n"
+        "{\"elements\": [{\"id\": \"e1\", \"status\": \"REPHRASED\"|\"CHANGED\"|\"ABSENT\", \"passage_id\": \"p1\"|null, \"cited_quote\": \"...\"|null}]}"
+    )
+
+    current_prompt = base_prompt
+    parsed_model = None
+
+    for attempt in range(3):
+        raw_model_res = gl.nondet.exec_prompt(current_prompt, response_format="json")
+        candidate = None
+        if isinstance(raw_model_res, dict):
+            candidate = raw_model_res
+        elif isinstance(raw_model_res, str):
+            try:
+                candidate = json.loads(raw_model_res)
+            except Exception:
+                candidate = None
+
+        if (
+            isinstance(candidate, dict)
+            and set(candidate.keys()) == {"elements"}
+            and isinstance(candidate.get("elements"), list)
+            and len(candidate["elements"]) == len(unresolved_ids)
+        ):
+            valid_schema = True
+            seen_ids = set()
+            for me in candidate["elements"]:
+                if (
+                    not isinstance(me, dict)
+                    or set(me.keys()) != {"id", "status", "passage_id", "cited_quote"}
+                    or me.get("id") not in unresolved_ids
+                    or me.get("id") in seen_ids
+                    or me.get("status") not in ("REPHRASED", "CHANGED", "ABSENT")
+                ):
+                    valid_schema = False
+                    break
+                seen_ids.add(me.get("id"))
+                st = me.get("status")
+                pid = me.get("passage_id")
+                cq = me.get("cited_quote")
+                if st == "ABSENT":
+                    if pid is not None or cq is not None:
+                        valid_schema = False
+                        break
+                else:
+                    if not isinstance(pid, str) or pid not in passages_by_id:
+                        valid_schema = False
+                        break
+                    if not isinstance(cq, str) or len(cq.strip()) < 10:
+                        valid_schema = False
+                        break
+            if valid_schema:
+                parsed_model = candidate
+                break
+
+        if attempt < 2:
+            current_prompt = (
+                f"{base_prompt}\n\n"
+                "IMPORTANT: Your previous output was invalid JSON or did not match the exact required schema. "
+                "Return strictly a single valid JSON object with key 'elements'. "
+                "Do NOT wrap with markdown code fences (```json or ```). "
+                "Do NOT include any backticks or commentary. "
+                "Ensure every element has 'id', 'status', 'passage_id', and 'cited_quote'."
+            )
+
+    if parsed_model is None:
+        return ("FAIL|INVALID_MODEL_OUTPUT", {})
+
+    element_results = {}
+    for me in parsed_model["elements"]:
+        eid = me["id"]
+        st = me["status"]
+        pid = me["passage_id"]
+        cq = me["cited_quote"]
+
+        if st == "ABSENT":
+            raw_q = raw_quotes_map[eid]
+            step = WINDOW_SIZE_CHARS - WINDOW_OVERLAP_CHARS
+            for w_start in range(0, len(norm_full), step):
+                w_chunk = norm_full[w_start:w_start + WINDOW_SIZE_CHARS]
+                score = _compute_relevance_score(raw_q, w_chunk)
+                if score >= RELEVANCE_THRESHOLD:
+                    return ("FAIL|ABSENCE_UNSUPPORTED", {})
+            element_results[eid] = {
+                "id": eid,
+                "status": "ABSENT",
+                "decided_by": "MODEL",
+                "passage_id": None,
+                "cited_quote": None,
+            }
+        else:
+            norm_cq = _normalize_text(cq)
+            passage_norm = _normalize_text(passages_by_id[pid]["text"])
+            if norm_cq not in passage_norm:
+                return ("FAIL|CITED_QUOTE_NOT_VERBATIM", {})
+            element_results[eid] = {
+                "id": eid,
+                "status": st,
+                "decided_by": "MODEL",
+                "passage_id": pid,
+                "cited_quote": cq.strip(),
+            }
+
+    return ("OK", element_results)
+
+
 class SourceDriftLedger(gl.Contract):
     citations: TreeMap[str, str]
     audited_revisions: TreeMap[str, str]
@@ -633,7 +776,7 @@ class SourceDriftLedger(gl.Contract):
         sender = gl.message.sender_address.as_hex
         current_ts, now_str = _get_current_timestamp()
 
-        def run_baseline_fetch() -> str:
+        def leader_reg_eval() -> str:
             clean_text, fetch_method = _fetch_page_text(canonical_url)
             if not clean_text or not clean_text.strip():
                 return "FAIL|SOURCE_UNAVAILABLE"
@@ -645,9 +788,69 @@ class SourceDriftLedger(gl.Contract):
                     return f"FAIL|QUOTE_NOT_FOUND|{item['id']}"
 
             base_sha256 = hashlib.sha256(norm_text.encode("utf-8")).hexdigest()
-            return f"OK|{base_sha256}|{len(clean_text)}|{fetch_method}"
+            meta_data = {"base_chars_total": len(clean_text), "fetch_method": fetch_method}
+            return f"OK|{base_sha256}\n---\n{json.dumps(meta_data)}"
 
-        consensus_res = gl.eq_principle.strict_eq(run_baseline_fetch)
+        def validator_reg_eval(leaders_res: gl.vm.Result) -> bool:
+            if not isinstance(leaders_res, gl.vm.Return):
+                return False
+            raw_leader = leaders_res.calldata
+            if not isinstance(raw_leader, str):
+                return False
+
+            if raw_leader.startswith("FAIL|"):
+                if raw_leader == "FAIL|SOURCE_UNAVAILABLE":
+                    def val_fail_fetch() -> tuple[str, str]:
+                        return _fetch_page_text(canonical_url)
+                    sand_res = gl.vm.spawn_sandbox(val_fail_fetch)
+                    if not isinstance(sand_res, gl.vm.Return):
+                        return True
+                    val_clean, _ = sand_res.calldata
+                    return not val_clean or not val_clean.strip()
+
+                if raw_leader.startswith("FAIL|QUOTE_NOT_FOUND"):
+                    def val_q_fetch() -> tuple[str, str]:
+                        return _fetch_page_text(canonical_url)
+                    sand_res = gl.vm.spawn_sandbox(val_q_fetch)
+                    if not isinstance(sand_res, gl.vm.Return):
+                        return False
+                    val_clean, _ = sand_res.calldata
+                    if not val_clean or not val_clean.strip():
+                        return False
+                    val_norm = _normalize_text(val_clean)
+                    qid = raw_leader.split("|")[2] if len(raw_leader.split("|")) > 2 else ""
+                    for item in validated_quotes:
+                        if item["id"] == qid:
+                            return item["norm_quote"] not in val_norm
+                    return False
+                return False
+
+            if not raw_leader.startswith("OK|") or "\n---\n" not in raw_leader:
+                return False
+
+            header, raw_meta = raw_leader.split("\n---\n", 1)
+            leader_base_sha256 = header[len("OK|"):]
+
+            def val_fetch_fn() -> tuple[str, str]:
+                return _fetch_page_text(canonical_url)
+
+            sand_res = gl.vm.spawn_sandbox(val_fetch_fn)
+            if not isinstance(sand_res, gl.vm.Return):
+                return False
+
+            val_clean, _ = sand_res.calldata
+            if not val_clean or not val_clean.strip():
+                return False
+
+            val_norm = _normalize_text(val_clean)
+            for item in validated_quotes:
+                if item["norm_quote"] not in val_norm:
+                    return False
+
+            val_base_sha256 = hashlib.sha256(val_norm.encode("utf-8")).hexdigest()
+            return val_base_sha256 == leader_base_sha256
+
+        consensus_res = gl.vm.run_nondet_unsafe(leader_reg_eval, validator_reg_eval)
         if not consensus_res or not consensus_res.startswith("OK|"):
             if consensus_res.startswith("FAIL|SOURCE_UNAVAILABLE"):
                 raise gl.vm.UserError("source unavailable")
@@ -655,10 +858,11 @@ class SourceDriftLedger(gl.Contract):
                 raise gl.vm.UserError("quote not found verbatim in baseline")
             raise gl.vm.UserError("baseline verification failed")
 
-        parts = consensus_res.split("|")
-        base_sha256 = parts[1]
-        base_chars_total = int(parts[2])
-        fetch_method = parts[3]
+        header, raw_meta = consensus_res.split("\n---\n", 1)
+        base_sha256 = header[len("OK|"):]
+        meta_dict = json.loads(raw_meta)
+        base_chars_total = int(meta_dict["base_chars_total"])
+        fetch_method = meta_dict["fetch_method"]
 
         self._ensure_meta_init()
         current_nonce = int(self.meta.get("nonce", "0")) + 1
@@ -772,17 +976,16 @@ class SourceDriftLedger(gl.Contract):
                     unresolved_ids.append(eid)
 
             if not unresolved_ids:
-                # Defect 4: Deterministic path reporting
                 coverage = "DETERMINISTIC_ONLY"
                 presented_passages = []
                 presented_segment_ids = []
                 presented_segments_count = 0
                 budget_chars_used = 0
                 source_chars_total = len(clean_full)
-                source_chars_inspected = len(clean_full)
+                source_chars_inspected = 0
+                chars_scanned = len(clean_full)
                 truncated_at = False
             else:
-                # 2. Window selection and segmentation for unresolved elements
                 unresolved_raw_quotes = [raw_quotes_map[eid] for eid in unresolved_ids]
                 (
                     inspected_text,
@@ -793,118 +996,22 @@ class SourceDriftLedger(gl.Contract):
                     truncated_at,
                 ) = _select_windows_for_quotes(clean_full, unresolved_raw_quotes)
                 budget_chars_used = len(inspected_text)
+                chars_scanned = len(clean_full)
 
                 presented_passages = _segment_passages(inspected_text)
                 presented_segment_ids = [p["id"] for p in presented_passages]
                 presented_segments_count = len(presented_passages)
-                passages_by_id = {p["id"]: p for p in presented_passages}
 
-                passages_block = "\n".join(
-                    f"[{p['id']}] {p['text']}" for p in presented_passages
+                model_code, model_res = _classify_unresolved_elements(
+                    presented_passages, unresolved_ids, raw_quotes_map, norm_full
                 )
-                elements_to_classify = [
-                    {"id": eid, "quote": raw_quotes_map[eid]}
-                    for eid in unresolved_ids
-                ]
-
-                prompt = (
-                    "You are a strict citation drift classifier.\n"
-                    "Evaluate each tracked quote against the presented passages from the target document.\n"
-                    "For each element, decide its status:\n"
-                    "- REPHRASED: the target asserts the exact same assertion, facts, numbers, and entities using different wording.\n"
-                    "- CHANGED: the target asserts something that conflicts (different number, entity, outcome, or polarity).\n"
-                    "- ABSENT: the presented passages do not address this assertion at all.\n\n"
-                    "Rules:\n"
-                    "1. For REPHRASED and CHANGED, you MUST provide 'passage_id' (e.g. \"p1\") and 'cited_quote' copied verbatim from that passage.\n"
-                    "2. For ABSENT, 'passage_id' must be null and 'cited_quote' must be null.\n"
-                    "3. Return strictly a JSON object with key 'elements'. No extra keys, no markdown code blocks.\n\n"
-                    "PRESENTED PASSAGES:\n"
-                    f"{passages_block}\n\n"
-                    "ELEMENTS TO CLASSIFY:\n"
-                    f"{json.dumps(elements_to_classify, indent=2)}\n\n"
-                    "Required JSON format:\n"
-                    "{\"elements\": [{\"id\": \"e1\", \"status\": \"REPHRASED\"|\"CHANGED\"|\"ABSENT\", \"passage_id\": \"p1\"|null, \"cited_quote\": \"...\"|null}]}"
-                )
-
-                raw_model_res = gl.nondet.exec_prompt(prompt, response_format="json")
-                if isinstance(raw_model_res, str):
-                    try:
-                        parsed_model = json.loads(raw_model_res)
-                    except Exception:
-                        return "FAIL|INVALID_MODEL_OUTPUT"
-                elif isinstance(raw_model_res, dict):
-                    parsed_model = raw_model_res
-                else:
-                    return "FAIL|INVALID_MODEL_OUTPUT"
-
-                if not isinstance(parsed_model, dict) or set(parsed_model.keys()) != {"elements"}:
-                    return "FAIL|INVALID_MODEL_OUTPUT"
-
-                model_elements = parsed_model.get("elements")
-                if not isinstance(model_elements, list) or len(model_elements) != len(unresolved_ids):
-                    return "FAIL|INVALID_MODEL_OUTPUT"
-
-                model_ids_seen = set()
-                for me in model_elements:
-                    if not isinstance(me, dict):
-                        return "FAIL|INVALID_MODEL_OUTPUT"
-                    if set(me.keys()) != {"id", "status", "passage_id", "cited_quote"}:
-                        return "FAIL|INVALID_MODEL_OUTPUT"
-                    eid = me.get("id")
-                    st = me.get("status")
-                    pid = me.get("passage_id")
-                    cq = me.get("cited_quote")
-
-                    if eid not in unresolved_ids or eid in model_ids_seen:
-                        return "FAIL|INVALID_MODEL_OUTPUT"
-                    model_ids_seen.add(eid)
-
-                    if st not in ("REPHRASED", "CHANGED", "ABSENT"):
-                        return "FAIL|INVALID_MODEL_OUTPUT"
-
-                    if st == "ABSENT":
-                        if pid is not None or cq is not None:
-                            return "FAIL|INVALID_MODEL_OUTPUT"
-
-                        # Defect 3: Calibrated absence discipline check
-                        raw_q = raw_quotes_map[eid]
-                        step = WINDOW_SIZE_CHARS - WINDOW_OVERLAP_CHARS
-                        for w_start in range(0, len(norm_full), step):
-                            w_chunk = norm_full[w_start:w_start + WINDOW_SIZE_CHARS]
-                            score = _compute_relevance_score(raw_q, w_chunk)
-                            if score >= RELEVANCE_THRESHOLD:
-                                return "FAIL|ABSENCE_UNSUPPORTED"
-
-                        element_results[eid] = {
-                            "id": eid,
-                            "status": "ABSENT",
-                            "decided_by": "MODEL",
-                            "passage_id": None,
-                            "cited_quote": None,
-                        }
-                    else:
-                        if not isinstance(pid, str) or pid not in passages_by_id:
-                            return "FAIL|INVALID_MODEL_OUTPUT"
-                        if not isinstance(cq, str) or len(cq.strip()) < 10:
-                            return "FAIL|INVALID_MODEL_OUTPUT"
-                        norm_cq = _normalize_text(cq)
-                        passage_norm = _normalize_text(passages_by_id[pid]["text"])
-                        if norm_cq not in passage_norm:
-                            return "FAIL|CITED_QUOTE_NOT_VERBATIM"
-
-                        element_results[eid] = {
-                            "id": eid,
-                            "status": st,
-                            "decided_by": "MODEL",
-                            "passage_id": pid,
-                            "cited_quote": cq.strip(),
-                        }
+                if model_code != "OK":
+                    return model_code
+                element_results.update(model_res)
 
             ordered_statuses = [element_results[e["id"]]["status"] for e in elements]
             audit_class = _map_element_statuses_to_class(ordered_statuses)
 
-            # Defect 1: Canonical consensus string of enumerations ONLY
-            # Target fingerprint included ONLY for REVISION targets; excluded for LIVE
             fp_for_consensus = target_fingerprint if target_kind == "REVISION" else "NONE"
             elem_summary = "|".join(f"{e['id']}:{element_results[e['id']]['status']}" for e in elements)
             canonical_summary = f"{audit_class}|{fp_for_consensus}|{elem_summary}"
@@ -918,6 +1025,7 @@ class SourceDriftLedger(gl.Contract):
                 "presented_segments_count": presented_segments_count,
                 "source_chars_total": source_chars_total,
                 "source_chars_inspected": source_chars_inspected,
+                "chars_scanned": chars_scanned,
                 "budget_chars_used": budget_chars_used,
                 "truncated_at": truncated_at,
                 "coverage": coverage,
@@ -929,16 +1037,21 @@ class SourceDriftLedger(gl.Contract):
 
         def validator_audit_eval(leaders_res: gl.vm.Result) -> bool:
             """
-            Custom validator consensus check (Defect 1):
+            Validator consensus check (v1.2.0):
             1. Verifies leader returned a valid OK payload with header and JSON.
-            2. Validator independently fetches target document from the same URL.
-            3. For REVISION targets, verifies target fingerprint matches leader's exactly.
-            4. For deterministic elements, validator's SAME/not-SAME decision MUST equal leader's.
-            5. Verifies canonical enumeration string matches validator's expected canonical string.
-            6. For model elements (REPHRASED/CHANGED), verifies leader's cited_quote is a verbatim
-               substring (after shared normalization) of ANY passage re-derived by the validator.
-               Passage IDs and character counts are NOT compared.
-            7. For ABSENT elements, validator confirms absence discipline holds on its own fetched text.
+            2. Re-evaluates leader failures:
+               - FAIL|SOURCE_UNAVAILABLE: confirms on own fetch.
+               - FAIL|ABSENCE_UNSUPPORTED: recomputed on validator's own text.
+               - FAIL|INVALID_MODEL_OUTPUT / FAIL|CITED_QUOTE_NOT_VERBATIM: runs own classification
+                 once in sandbox; accepts failure ONLY if validator run also fails; rejects otherwise.
+            3. Validator independently fetches target document from the same URL.
+            4. For REVISION targets, verifies target fingerprint matches leader's exactly.
+            5. For deterministic elements, validator's SAME/not-SAME decision MUST equal leader's.
+            6. For model elements, validator runs its OWN model classification in sandbox,
+               and verifies element statuses equal leader's statuses.
+            7. Verifies cited quote is verbatim substring of validator's re-derived passages.
+            8. For ABSENT elements, validator confirms absence discipline holds on its own text.
+            9. Verifies canonical enumeration summary matches validator's expected canonical string.
             """
             if not isinstance(leaders_res, gl.vm.Return):
                 return False
@@ -956,7 +1069,55 @@ class SourceDriftLedger(gl.Contract):
                         return True
                     val_clean_full, _ = sand_res.calldata
                     return not val_clean_full or not val_clean_full.strip()
-                return True
+
+                if raw_leader == "FAIL|ABSENCE_UNSUPPORTED":
+                    def val_absence_fetch() -> tuple[str, str]:
+                        return _fetch_page_text(canonical_target_url)
+                    sand_res = gl.vm.spawn_sandbox(val_absence_fetch)
+                    if not isinstance(sand_res, gl.vm.Return):
+                        return False
+                    val_clean_full, _ = sand_res.calldata
+                    if not val_clean_full or not val_clean_full.strip():
+                        return False
+                    val_norm_full = _normalize_text(val_clean_full)
+                    step = WINDOW_SIZE_CHARS - WINDOW_OVERLAP_CHARS
+                    for e in elements:
+                        nq = norm_quotes_map[e["id"]]
+                        if nq not in val_norm_full:
+                            raw_q = raw_quotes_map[e["id"]]
+                            for w_start in range(0, len(val_norm_full), step):
+                                w_chunk = val_norm_full[w_start:w_start + WINDOW_SIZE_CHARS]
+                                score = _compute_relevance_score(raw_q, w_chunk)
+                                if score >= RELEVANCE_THRESHOLD:
+                                    return True
+                    return False
+
+                if raw_leader in ("FAIL|INVALID_MODEL_OUTPUT", "FAIL|CITED_QUOTE_NOT_VERBATIM"):
+                    def val_test_fail() -> tuple[str, str]:
+                        return _fetch_page_text(canonical_target_url)
+                    sand_res = gl.vm.spawn_sandbox(val_test_fail)
+                    if not isinstance(sand_res, gl.vm.Return):
+                        return True
+                    val_clean_full, _ = sand_res.calldata
+                    if not val_clean_full or not val_clean_full.strip():
+                        return True
+                    val_norm_full = _normalize_text(val_clean_full)
+                    val_unres = [e["id"] for e in elements if norm_quotes_map[e["id"]] not in val_norm_full]
+                    if not val_unres:
+                        return False
+                    val_unres_raw = [raw_quotes_map[eid] for eid in val_unres]
+                    val_inspected, _, _, _, _, _ = _select_windows_for_quotes(val_clean_full, val_unres_raw)
+                    val_passages = _segment_passages(val_inspected)
+
+                    def val_model_probe() -> tuple[str, dict]:
+                        return _classify_unresolved_elements(val_passages, val_unres, raw_quotes_map, val_norm_full)
+                    probe_res = gl.vm.spawn_sandbox(val_model_probe)
+                    if not isinstance(probe_res, gl.vm.Return):
+                        return True
+                    probe_code, _ = probe_res.calldata
+                    return probe_code != "OK"
+
+                return False
 
             if not raw_leader.startswith("OK|") or "\n---\n" not in raw_leader:
                 return False
@@ -983,7 +1144,6 @@ class SourceDriftLedger(gl.Contract):
             val_norm_full = _normalize_text(val_clean_full)
             val_fingerprint = hashlib.sha256(val_norm_full.encode("utf-8")).hexdigest()
 
-            # Target fingerprint check: strictly for REVISION targets only
             if target_kind == "REVISION":
                 if val_fingerprint != leader_data.get("target_text_sha256"):
                     return False
@@ -1002,7 +1162,6 @@ class SourceDriftLedger(gl.Contract):
                 val_is_same = norm_quotes_map[eid] in val_norm_full
                 leader_is_same = (le.get("status") == "SAME")
 
-                # (iii) Deterministic decisions must equal
                 if val_is_same != leader_is_same:
                     return False
                 if val_is_same and le.get("decided_by") != "DETERMINISTIC":
@@ -1021,7 +1180,6 @@ class SourceDriftLedger(gl.Contract):
             if expected_class != leader_class:
                 return False
 
-            # (i) Canonical string of enumerations only
             expected_fp = val_fingerprint if target_kind == "REVISION" else "NONE"
             expected_summary = "|".join(f"{e['id']}:{leader_elems_by_id[e['id']].get('status')}" for e in elements)
             expected_canonical = f"{expected_class}|{expected_fp}|{expected_summary}"
@@ -1029,27 +1187,44 @@ class SourceDriftLedger(gl.Contract):
             if leader_canonical != expected_canonical:
                 return False
 
-            # (ii) Model-derived passage checks on validator's independently re-derived passages
             if val_unresolved_ids:
                 val_unresolved_raw = [raw_quotes_map[eid] for eid in val_unresolved_ids]
                 val_inspected, _, _, _, _, _ = _select_windows_for_quotes(val_clean_full, val_unresolved_raw)
                 val_passages = _segment_passages(val_inspected)
                 val_norm_passages = [_normalize_text(p["text"]) for p in val_passages]
 
+                def val_classify_fn() -> tuple[str, dict]:
+                    return _classify_unresolved_elements(
+                        val_passages,
+                        val_unresolved_ids,
+                        raw_quotes_map,
+                        val_norm_full,
+                    )
+
+                sand_model_res = gl.vm.spawn_sandbox(val_classify_fn)
+                if not isinstance(sand_model_res, gl.vm.Return):
+                    return False
+
+                val_code, val_model_results = sand_model_res.calldata
+                if val_code != "OK":
+                    return False
+
                 for eid in val_unresolved_ids:
                     le = leader_elems_by_id[eid]
-                    st = le.get("status")
+                    leader_st = le.get("status")
+                    val_elem = val_model_results.get(eid)
+                    if not val_elem or val_elem.get("status") != leader_st:
+                        return False
 
-                    if st in ("REPHRASED", "CHANGED"):
+                    if leader_st in ("REPHRASED", "CHANGED"):
                         cq = le.get("cited_quote")
                         if not cq or not isinstance(cq, str) or len(cq.strip()) < 10:
                             return False
                         norm_cq = _normalize_text(cq)
-                        # Verbatim substring of ANY passage re-derived by validator
                         if not any(norm_cq in vp for vp in val_norm_passages):
                             return False
 
-                    elif st == "ABSENT":
+                    elif leader_st == "ABSENT":
                         if le.get("cited_quote") is not None or le.get("passage_id") is not None:
                             return False
                         raw_q = raw_quotes_map[eid]
@@ -1102,6 +1277,7 @@ class SourceDriftLedger(gl.Contract):
             "presented_segments_count": audit_payload["presented_segments_count"],
             "source_chars_total": audit_payload["source_chars_total"],
             "source_chars_inspected": audit_payload["source_chars_inspected"],
+            "chars_scanned": audit_payload["chars_scanned"],
             "budget_chars_used": audit_payload["budget_chars_used"],
             "truncated_at": audit_payload["truncated_at"],
             "coverage": audit_payload["coverage"],

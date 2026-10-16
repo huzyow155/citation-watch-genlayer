@@ -1,4 +1,4 @@
-# Runtime Notes and SDK Investigation
+# Runtime Notes and SDK Investigation (v1.2.0)
 
 ## Network Context
 - Network: GenLayer Studionet (Preview)
@@ -125,16 +125,9 @@ Empirical execution results:
    - `render_len`: 119,544 text characters.
    - `get_status`: 200, `get_len`: 1,322,812 raw HTML bytes.
 
-### Consensus Architecture Decision
-- For **registration**: Deterministic fetch and normalization produces an exact fingerprint. Consensus value is `"OK|" + baseline_text_sha256`. Since revision permalinks are immutable, validators reproduce the identical sha256 fingerprint.
-- For **auditing**: In v1.1.0, `SourceDriftLedger` replaces `strict_eq` with `gl.vm.run_nondet_unsafe(leader_audit_eval, validator_audit_eval)`:
-  1. The leader produces the full audit payload (`OK|<canonical>\n---\n<json>`).
-  2. The validator re-fetches the page inside a sandbox using `gl.vm.spawn_sandbox(val_fetch_fn)`.
-  3. The validator checks that the canonical enum string (`<CLASS>|<FP_OR_NONE>|e1:<STATUS>|...`) matches.
-  4. For `LIVE` targets, the fingerprint is replaced with `"NONE"` and excluded from consensus comparison, while character counts and raw passages are kept out of the canonical consensus string.
-  5. For model elements, the validator re-derives passages independently and verifies that the leader's `cited_quote` is a normalized substring of any validator passage, without comparing passage IDs (`p1` vs `p2`).
-
 ## Critical GenVM Discovery: `gl.vm.spawn_sandbox` in Validator Context
+
+### 1. Web Fetch in Validator Sandbox
 During the v1.1.0 implementation, we discovered that calling non-deterministic operations (`gl.nondet.web.render` or `gl.nondet.web.get`) directly from the top-level validator callback of `gl.vm.run_nondet_unsafe` throws execution faults inside GenVM worker threads, causing validators to disagree.
 
 To execute non-deterministic calls inside the validator:
@@ -148,9 +141,24 @@ if not isinstance(sand_res, gl.vm.Return):
 val_clean_full, _ = sand_res.calldata
 ```
 
-### Probe2 Verification on Studionet
-- Probe contract address: `0x442863622d98F506c492C0484D187a9FeB487d77`
-- Deployment Tx: `0x48a4789547ff56eaeb72e3a13783854ee7589d38f8fc87766f6ec6d9bc57ddcc` (`ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes).
-- Probe execution Tx: `0x386ef2d03232473837ce36542801acfeab232d72cd94fda4516ca1f987db29ea` (`ACCEPTED`, `MAJORITY_AGREE`, 3/5 votes, duration 26.5s).
-- Conclusion: `gl.vm.spawn_sandbox` inside `validator_audit_eval` cleanly wraps web fetch operations and delivers reliable majority agreement across validator nodes.
+### 2. Model Execution in Validator Sandbox (v1.2.0 Verification)
+In v1.2.0, we investigated whether `gl.nondet.exec_prompt` could also execute inside `gl.vm.spawn_sandbox` within the validator context to enable independent validator-side model classification.
+- Probe2 contract deployed on Studionet: `0x0615C044A8B5Cf78693ABB2B466b5985CfBE9789`
+- Function invoked: `test_validator_prompt(test_msg: str)`
+- Transaction: `0xb366b5c3ff3505e04ba5901c5d01ec134372e50c4563a5ba8bbf43d0f074d001`
+- Consensus outcome: `ACCEPTED`, `MAJORITY_AGREE` (3 agree / 5 nodes, duration 23.3s).
+- Conclusion: `gl.nondet.exec_prompt` works reliably inside `gl.vm.spawn_sandbox` in the validator callback, allowing validators to independently classify element statuses.
 
+### 3. Bounded Leader Retry Mechanism
+When LLMs return formatting variations (such as markdown code fences ```json), regex-based repair can be fragile. In v1.2.0, `SourceDriftLedger` implements bounded retry (up to 2 corrective retries requesting strict JSON without markdown code blocks):
+- Attempt 0: Base prompt with `response_format="json"`.
+- Attempt 1-2: Appends strict guidance specifying no markdown code fences, no backticks, and explicit key requirements.
+- Eliminates syntax errors cleanly while strictly bounding fuel consumption.
+
+### 4. LIVE Page Cooldown Violation Verification
+The 300-second cooldown on consecutive audits of the live Wikipedia page was verified on-chain:
+- Citation ID: `bbee352df865`
+- Target: `https://en.wikipedia.org/wiki/Alan_Turing`
+- Cooldown Revert Transaction: `0x05c4de3ec1dacd6a8b108bab9d022b096c85b1a1982bd0ba8f86e583aae4f427`
+- Outcome: `ACCEPTED`, `MAJORITY_AGREE` (3 agree / 5 nodes).
+- Decoded Revert Payload: `live audit cooldown active`.

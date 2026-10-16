@@ -14,7 +14,7 @@ async function main() {
   const rpcUrl = deployments.rpc;
 
   console.log("=======================================================");
-  console.log("RUNNING CITATIONWATCH v1.1.0 ON-CHAIN EVIDENCE SUITE");
+  console.log("RUNNING CITATIONWATCH v1.2.0 ON-CHAIN EVIDENCE SUITE");
   console.log("Network:                 GenLayer Studionet (Preview)");
   console.log("Chain ID:                61999");
   console.log("SourceDriftLedger (Main):", ledgerAddress);
@@ -34,7 +34,7 @@ async function main() {
     network: "GenLayer Studionet (Preview)",
     chainId: 61999,
     rpc: rpcUrl,
-    version: "1.1.0",
+    version: "1.2.0",
     ledgerAddress: ledgerAddress,
     claimsBoardAddress: boardAddress,
     ledgerDeployTxHash: deployments.ledger.deployTxHash,
@@ -67,7 +67,21 @@ async function main() {
     for (const lr of leaderReceipts) {
       if (typeof lr.result === 'string') {
         const buf = Buffer.from(lr.result, 'base64');
-        return buf.slice(1).toString('utf8');
+        if (buf.length > 0 && buf[0] < 32) {
+          return buf.slice(1).toString('utf8');
+        }
+        return buf.toString('utf8');
+      }
+      if (typeof lr.error === 'string') {
+        return lr.error;
+      }
+      if (lr.execution_result) {
+        if (typeof lr.execution_result.error === 'string') return lr.execution_result.error;
+        if (typeof lr.execution_result.result === 'string') {
+          const buf = Buffer.from(lr.execution_result.result, 'base64');
+          if (buf.length > 0 && buf[0] < 32) return buf.slice(1).toString('utf8');
+          return buf.toString('utf8');
+        }
       }
     }
     return null;
@@ -77,8 +91,8 @@ async function main() {
     console.log(`\n>>> Executing: ${fnName} [${desc}]`);
     const t0 = Date.now();
     let txHash = null;
-    let receipt = null;
     let sendErr = null;
+    let tx = null;
 
     try {
       txHash = await client.writeContract({
@@ -100,7 +114,7 @@ async function main() {
             break;
           }
         } catch (e) {
-          // ignore transient fetch error
+          // retry on glitch
         }
         await new Promise(r => setTimeout(r, 3000));
       }
@@ -140,6 +154,53 @@ async function main() {
     return attemptRecord;
   }
 
+  async function registerWithRetry(label, url, quotesJson, desc) {
+    let regRes = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      regRes = await executeWrite(
+        ledgerAddress,
+        'register_citation',
+        [label, url, quotesJson],
+        attempt === 1 ? desc : `${desc} (Attempt ${attempt})`
+      );
+      if (regRes.status === 'ACCEPTED' || regRes.status_name === 'ACCEPTED' || regRes.result === 'FINALIZED') {
+        break;
+      }
+      if (regRes.result !== 'MAJORITY_DISAGREE') {
+        break;
+      }
+      console.log(`    Retrying registration for ${desc} (attempt ${attempt + 1})...`);
+    }
+    const rawIds = await client.readContract({
+      address: ledgerAddress,
+      functionName: 'list_citation_ids',
+      args: [0, 10],
+    });
+    const cid = JSON.parse(rawIds)[0];
+    console.log(`    Registered Citation ID: ${cid}`);
+    return { regRes, cid };
+  }
+
+  async function auditWithRetry(cid, targetUrl, desc) {
+    let auditRes = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      auditRes = await executeWrite(
+        ledgerAddress,
+        'audit_citation',
+        [cid, targetUrl],
+        attempt === 1 ? desc : `${desc} (Attempt ${attempt})`
+      );
+      if (auditRes.status === 'ACCEPTED' || auditRes.status_name === 'ACCEPTED' || auditRes.result === 'FINALIZED') {
+        break;
+      }
+      if (auditRes.result !== 'MAJORITY_DISAGREE') {
+        break;
+      }
+      console.log(`    Retrying audit for ${desc} (attempt ${attempt + 1})...`);
+    }
+    return auditRes;
+  }
+
   async function measureFinalized(txHash) {
     console.log(`\n>>> Measuring FINALIZED status for Tx: ${txHash}`);
     const t0 = Date.now();
@@ -148,7 +209,7 @@ async function main() {
     while (!isFinalized && pollCount < 60) {
       pollCount++;
       const tx = await getTxDetails(txHash);
-      if (tx?.status_name === 'FINALIZED') {
+      if (tx?.status_name === 'FINALIZED' || tx?.status === 'FINALIZED') {
         isFinalized = true;
         const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
         console.log(`    Transaction transitioned to FINALIZED in ${elapsed}s (polls: ${pollCount})`);
@@ -179,26 +240,17 @@ async function main() {
   const turingQuote = "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.";
   const turingQuotesJson = JSON.stringify([turingQuote]);
 
-  const regTuring = await executeWrite(
-    ledgerAddress,
-    'register_citation',
-    ["Alan Turing Silver Savings", baseTuringUrl, turingQuotesJson],
+  const { regRes: regTuring, cid: turingCid } = await registerWithRetry(
+    "Alan Turing Silver Savings",
+    baseTuringUrl,
+    turingQuotesJson,
     "Register Alan Turing Citation"
   );
 
-  const rawMetaTuring = await client.readContract({
-    address: ledgerAddress,
-    functionName: 'list_citation_ids',
-    args: [0, 10],
-  });
-  const turingCid = JSON.parse(rawMetaTuring)[0];
-  console.log("    Registered Citation ID:", turingCid);
-
   const turingTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650";
-  const auditTuringUnchanged = await executeWrite(
-    ledgerAddress,
-    'audit_citation',
-    [turingCid, turingTargetRevUrl],
+  const auditTuringUnchanged = await auditWithRetry(
+    turingCid,
+    turingTargetRevUrl,
     "Audit Alan Turing Against Later Revision (UNCHANGED)"
   );
 
@@ -226,6 +278,8 @@ async function main() {
     targetOldid: "1380390650",
     auditClass: turingRecordRev.audits[0]?.class,
     coverage: turingRecordRev.audits[0]?.coverage,
+    charsScanned: turingRecordRev.audits[0]?.chars_scanned,
+    sourceCharsInspected: turingRecordRev.audits[0]?.source_chars_inspected,
     budgetCharsUsed: turingRecordRev.audits[0]?.budget_chars_used,
     finalStatus: turingRecordRev.status,
     statusString: turingStatusRev,
@@ -280,26 +334,17 @@ async function main() {
   const computingQuote = "Software is also sometimes used in a more narrow sense, meaning application software only.";
   const computingQuotesJson = JSON.stringify([computingQuote]);
 
-  const regComputing = await executeWrite(
-    ledgerAddress,
-    'register_citation',
-    ["Computing Narrower Sense Definition", baseComputingUrl, computingQuotesJson],
+  const { regRes: regComputing, cid: computingCid } = await registerWithRetry(
+    "Computing Narrower Sense Definition",
+    baseComputingUrl,
+    computingQuotesJson,
     "Register Computing Citation"
   );
 
-  const rawMetaComputing = await client.readContract({
-    address: ledgerAddress,
-    functionName: 'list_citation_ids',
-    args: [0, 10],
-  });
-  const computingCid = JSON.parse(rawMetaComputing)[0];
-  console.log("    Registered Computing Citation ID:", computingCid);
-
   const computingTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262";
-  const auditComputingCosmetic = await executeWrite(
-    ledgerAddress,
-    'audit_citation',
-    [computingCid, computingTargetRevUrl],
+  const auditComputingCosmetic = await auditWithRetry(
+    computingCid,
+    computingTargetRevUrl,
     "Audit Computing Citation Against Later Revision (COSMETIC)"
   );
 
@@ -333,65 +378,56 @@ async function main() {
   };
 
   // =========================================================================
-  // SCENARIO 4: MATERIAL Drift (Best Picture 1967 Director/Producer)
+  // SCENARIO 4: MATERIAL Drift (Python Foundation Supported Versions Prose)
   // =========================================================================
   console.log("\n=======================================================");
-  console.log("SCENARIO 4: MATERIAL Drift Audit (Best Picture 1967 Correction)");
+  console.log("SCENARIO 4: MATERIAL Drift Audit (Python Foundation Prose Sentence)");
   console.log("=======================================================");
-  const baseOscarsUrl = "https://en.wikipedia.org/w/index.php?title=Academy_Award_for_Best_Picture&oldid=1369080338";
-  const oscarsQuote = "1967 In the Heat of the Night Walter Mirisch The Graduate Mike Nichols";
-  const oscarsQuotesJson = JSON.stringify([oscarsQuote]);
+  const basePythonUrl = "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1378728329";
+  const pythonQuote = "the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14, following the project's annual release cycle and five-year support policy.";
+  const pythonQuotesJson = JSON.stringify([pythonQuote]);
 
-  const regOscars = await executeWrite(
-    ledgerAddress,
-    'register_citation',
-    ["Best Picture 1967 In the Heat of the Night", baseOscarsUrl, oscarsQuotesJson],
-    "Register Oscars Citation"
+  const { regRes: regPython, cid: pythonCid } = await registerWithRetry(
+    "Python Foundation Supported Versions",
+    basePythonUrl,
+    pythonQuotesJson,
+    "Register Python Citation"
   );
 
-  const rawMetaOscars = await client.readContract({
-    address: ledgerAddress,
-    functionName: 'list_citation_ids',
-    args: [0, 10],
-  });
-  const oscarsCid = JSON.parse(rawMetaOscars)[0];
-  console.log("    Registered Oscars Citation ID:", oscarsCid);
-
-  const oscarsTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Academy_Award_for_Best_Picture&oldid=1370247723";
-  const auditOscarsMaterial = await executeWrite(
-    ledgerAddress,
-    'audit_citation',
-    [oscarsCid, oscarsTargetRevUrl],
-    "Audit Oscars Citation Against Later Revision (MATERIAL)"
+  const pythonTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1379380903";
+  const auditPythonMaterial = await auditWithRetry(
+    pythonCid,
+    pythonTargetRevUrl,
+    "Audit Python Citation Against Later Revision (MATERIAL)"
   );
 
-  const oscarsRecord = JSON.parse(await client.readContract({
+  const pythonRecord = JSON.parse(await client.readContract({
     address: ledgerAddress,
     functionName: 'get_citation',
-    args: [oscarsCid],
+    args: [pythonCid],
   }));
-  const oscarsStatus = await client.readContract({
+  const pythonStatus = await client.readContract({
     address: ledgerAddress,
     functionName: 'get_status',
-    args: [oscarsCid],
+    args: [pythonCid],
   });
 
   evidence.cases.scenario_material = {
     title: "Scenario 4: MATERIAL Drift Audit (Conflicting Fact / Entity Update)",
-    citationId: oscarsCid,
-    registerTx: regOscars.txHash,
-    registerAgree: `${regOscars.agreeCount}/${regOscars.totalVotes}`,
-    auditTx: auditOscarsMaterial.txHash,
-    auditAgree: `${auditOscarsMaterial.agreeCount}/${auditOscarsMaterial.totalVotes}`,
-    baselineUrl: baseOscarsUrl,
-    targetUrl: oscarsTargetRevUrl,
+    citationId: pythonCid,
+    registerTx: regPython.txHash,
+    registerAgree: `${regPython.agreeCount}/${regPython.totalVotes}`,
+    auditTx: auditPythonMaterial.txHash,
+    auditAgree: `${auditPythonMaterial.agreeCount}/${auditPythonMaterial.totalVotes}`,
+    baselineUrl: basePythonUrl,
+    targetUrl: pythonTargetRevUrl,
     targetKind: "REVISION",
-    targetOldid: "1370247723",
-    auditClass: oscarsRecord.audits[0]?.class,
-    coverage: oscarsRecord.audits[0]?.coverage,
-    finalStatus: oscarsRecord.status,
-    statusString: oscarsStatus,
-    record: oscarsRecord,
+    targetOldid: "1379380903",
+    auditClass: pythonRecord.audits[0]?.class,
+    coverage: pythonRecord.audits[0]?.coverage,
+    finalStatus: pythonRecord.status,
+    statusString: pythonStatus,
+    record: pythonRecord,
   };
 
   // =========================================================================
@@ -404,26 +440,17 @@ async function main() {
   const babbageQuote = "Upon his death he halted his breathing and the beating of his heart.";
   const babbageQuotesJson = JSON.stringify([babbageQuote]);
 
-  const regBabbage = await executeWrite(
-    ledgerAddress,
-    'register_citation',
-    ["Charles Babbage Death Detail", baseBabbageUrl, babbageQuotesJson],
+  const { regRes: regBabbage, cid: babbageCid } = await registerWithRetry(
+    "Charles Babbage Death Detail",
+    baseBabbageUrl,
+    babbageQuotesJson,
     "Register Charles Babbage Citation"
   );
 
-  const rawMetaBabbage = await client.readContract({
-    address: ledgerAddress,
-    functionName: 'list_citation_ids',
-    args: [0, 10],
-  });
-  const babbageCid = JSON.parse(rawMetaBabbage)[0];
-  console.log("    Registered Charles Babbage Citation ID:", babbageCid);
-
   const babbageTargetRevUrl = "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484";
-  const auditBabbageRemoved = await executeWrite(
-    ledgerAddress,
-    'audit_citation',
-    [babbageCid, babbageTargetRevUrl],
+  const auditBabbageRemoved = await auditWithRetry(
+    babbageCid,
+    babbageTargetRevUrl,
     "Audit Charles Babbage Against Later Revision (REMOVED)"
   );
 
@@ -457,16 +484,36 @@ async function main() {
   };
 
   // =========================================================================
-  // SCENARIO 6: ClaimsBoard Publish and Refresh with Badge Update
+  // SCENARIO 6: ClaimsBoard Cross-Contract Integration & Real Badge Transition
   // =========================================================================
   console.log("\n=======================================================");
   console.log("SCENARIO 6: ClaimsBoard Cross-Contract Integration & Real Badge Transition");
   console.log("=======================================================");
+  // Step 1: Register dedicated citation for badge transition
+  const baseTransUrl = "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1378089129";
+  const transQuote = "the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14, following the project's annual release cycle and five-year support policy.";
+  const transQuotesJson = JSON.stringify([transQuote]);
+
+  const { regRes: regTrans, cid: transCid } = await registerWithRetry(
+    "ClaimsBoard Badge Transition Citation",
+    baseTransUrl,
+    transQuotesJson,
+    "Register Badge Transition Citation"
+  );
+
+  // Step 2: Audit against rev 1378728329 (unchanged -> status HEALTHY, class UNCHANGED)
+  const auditTransUnchanged = await auditWithRetry(
+    transCid,
+    "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1378728329",
+    "Audit Transition Citation to UNCHANGED"
+  );
+
+  // Step 3: Publish Claim on this citation -> initial badge VERIFIED
   const publishClaim = await executeWrite(
     boardAddress,
     'publish_claim',
-    [turingCid, "Turing silver savings confirmed on Wikipedia"],
-    "Publish Claim on Alan Turing Citation"
+    [transCid, "Python Foundation Supported Releases Policy"],
+    "Publish Claim on Transition Citation"
   );
 
   const rawClaimIds = await client.readContract({
@@ -482,38 +529,45 @@ async function main() {
     functionName: 'get_claim',
     args: [claimId],
   }));
+  console.log("    Initial Claim Badge:", claimRecordInitial.badge, "Badge History:", claimRecordInitial.badge_history);
 
-  // Also publish claim on MATERIAL citation (Oscars) to observe DRIFTED badge
-  const publishOscarsClaim = await executeWrite(
-    boardAddress,
-    'publish_claim',
-    [oscarsCid, "Oscars 1967 In the Heat of the Night Director"],
-    "Publish Claim on Oscars Citation"
+  // Step 4: Audit transition citation to MATERIAL (rev 1379380903 -> 3.15 added)
+  const auditTransMaterial = await auditWithRetry(
+    transCid,
+    "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1379380903",
+    "Audit Transition Citation to MATERIAL"
   );
-  const rawClaimIds2 = await client.readContract({
-    address: boardAddress,
-    functionName: 'list_claim_ids',
-    args: [0, 10],
-  });
-  const oscarsClaimId = JSON.parse(rawClaimIds2)[0];
-  const oscarsClaimRecord = JSON.parse(await client.readContract({
+
+  // Step 5: Call refresh_claim on ClaimsBoard to transition badge from VERIFIED to DRIFTED
+  const refreshRes = await executeWrite(
+    boardAddress,
+    'refresh_claim',
+    [claimId],
+    "Refresh Claim after Material Drift"
+  );
+
+  const claimRecordRefreshed = JSON.parse(await client.readContract({
     address: boardAddress,
     functionName: 'get_claim',
-    args: [oscarsClaimId],
+    args: [claimId],
   }));
+  console.log("    Refreshed Claim Badge:", claimRecordRefreshed.badge, "Badge History:", claimRecordRefreshed.badge_history);
 
   evidence.cases.scenario_claims_board = {
-    title: "Scenario 6: ClaimsBoard Cross-Contract Integration & Badge Derivation",
+    title: "Scenario 6: ClaimsBoard Cross-Contract Integration & Real Badge Transition",
     claimId: claimId,
-    citationId: turingCid,
+    citationId: transCid,
     publishTx: publishClaim.txHash,
     publishAgree: `${publishClaim.agreeCount}/${publishClaim.totalVotes}`,
     initialBadge: claimRecordInitial.badge,
-    badgeHistory: claimRecordInitial.badge_history,
-    claimRecord: claimRecordInitial,
-    driftedClaimId: oscarsClaimId,
-    driftedBadge: oscarsClaimRecord.badge,
-    driftedPublishTx: publishOscarsClaim.txHash,
+    initialBadgeHistory: claimRecordInitial.badge_history,
+    auditUnchangedTx: auditTransUnchanged.txHash,
+    auditMaterialTx: auditTransMaterial.txHash,
+    refreshTx: refreshRes.txHash,
+    refreshAgree: `${refreshRes.agreeCount}/${refreshRes.totalVotes}`,
+    finalBadge: claimRecordRefreshed.badge,
+    finalBadgeHistory: claimRecordRefreshed.badge_history,
+    claimRecord: claimRecordRefreshed,
   };
 
   // =========================================================================
@@ -527,10 +581,10 @@ async function main() {
   }
 
   // =========================================================================
-  // NEGATIVE TESTS SUITE
+  // NEGATIVE TESTS SUITE (13 Verified On-Chain Reverts)
   // =========================================================================
   console.log("\n=======================================================");
-  console.log("NEGATIVE TESTS SUITE: On-Chain Revert Payload Verification");
+  console.log("NEGATIVE TESTS SUITE: On-Chain Revert Payload Verification (13 Tests)");
   console.log("=======================================================");
 
   const negDefs = [
@@ -610,6 +664,20 @@ async function main() {
       fn: 'audit_citation',
       args: ["000000000000", turingTargetRevUrl],
       expectedRevert: "citation not found",
+    },
+    {
+      key: "neg_lookalike_host",
+      name: "Look-Alike Domain Spoof (en.wikipedia.org.evil.com)",
+      fn: 'register_citation',
+      args: ["Look-alike Host Test", "https://en.wikipedia.org.evil.com/w/index.php?title=Alan_Turing&oldid=1379625434", turingQuotesJson],
+      expectedRevert: "source URL must be a wikipedia.org language domain",
+    },
+    {
+      key: "neg_live_audit_cooldown",
+      name: "LIVE Audit Cooldown Violation (<300s)",
+      fn: 'audit_citation',
+      args: [turingCid, turingLiveUrl],
+      expectedRevert: "live audit cooldown active",
     },
   ];
 

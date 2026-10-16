@@ -1,0 +1,161 @@
+{
+  "recordedAt": "2026-10-16T10:29:53.828Z",
+  "statusEqualityAddress": "0xAa82a8f37b5fd937408485B7f33380b92F382F36",
+  "groundingOnlyAddress": "0xc6a8Cfdbbb4CA98637053A0c8529686Ff4C41CaD",
+  "cosmetic": {
+    "statusEquality": [
+      {
+        "run": 1,
+        "citationId": "c2b41bd630c3",
+        "registerTx": "0xc02aed98b1fadc1244f4e359ad1a7f36e660e4efa28e23453aa589a36f303958",
+        "auditTx": "0xb2189ef69d678c7f8c65a286300c417cb449379c220c8d9707d1d825e48e4fc1",
+        "durationSec": 21.72,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 3,
+        "totalVotes": 5,
+        "auditClass": "COSMETIC"
+      },
+      {
+        "run": 2,
+        "citationId": "c2b41bd630c3",
+        "registerTx": "0x5936eb18024810cc5d92213769459216a48bc5f80167bf2f9ceba2ab68e94996",
+        "auditTx": "0xe5a943b7473602d2da1619b9cab7f8631d1643d0811591d031e5204435cabff2",
+        "durationSec": 8.4,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 3,
+        "totalVotes": 5,
+        "auditClass": "COSMETIC"
+      },
+      {
+        "run": 3,
+        "citationId": "c2b41bd630c3",
+        "registerTx": "0x3abd6e38dd75bbaad43ceb23eb3d383732c48fb63c983f3d4e818a9a9b6068df",
+        "auditTx": "0x6190bd846b6cba1f406dc3884357481c2f61e7f06ff07edc96c34bdb532d9645",
+        "durationSec": 8.41,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 3,
+        "totalVotes": 5,
+        "auditClass": "COSMETIC"
+      }
+    ],
+    "groundingOnly": [
+      {
+        "run": 1,
+        "citationId": "d81f10ae72a5",
+        "registerTx": "0xb5b1f3e7bd242e0e6e6d5b818da5fa2bd9cb92140a17ac1fcc455f2171f3f1f1",
+        "auditTx": "0xbe536d601923dfe47b24c368f6411f61ae073139f2a75412075640dfa6fc9274",
+        "durationSec": 5.17,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 5,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      },
+      {
+        "run": 2,
+        "citationId": "d81f10ae72a5",
+        "registerTx": "0xcd529ce50fe9d0fa6c227c47b5ddc61f0ab61541b91b56d0fc2186d0107ac31a",
+        "auditTx": "0xa2d4941732d4f1569a72719aab5928877571b53cf16f8f3ac0d56e68d86e9e10",
+        "durationSec": 8.48,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 4,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      },
+      {
+        "run": 3,
+        "citationId": "d81f10ae72a5",
+        "registerTx": "0x307095d72588e5548a5890db9f3fbe5823b3a69d1cbf64c7a987eaa67e581df2",
+        "auditTx": "0x922681d38ef3ead6d48a7840107a84dcabc7a784eecf9e7545d11fd497673873",
+        "durationSec": 8.42,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 3,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      }
+    ]
+  },
+  "material": {
+    "statusEquality": [
+      {
+        "run": 1,
+        "citationId": "6f66ad85d15f",
+        "registerTx": "0x9ea3c502154905ff70792b49fb5f8bf17e8c3b39bad201d0ba2c77f2f5fe1aef",
+        "auditTx": "0x3ea32d01375a3ac9bb86501ab51caf02a147762a09f0ddc204b265f1cfead8cc",
+        "durationSec": 65.26,
+        "status": "UNDETERMINED",
+        "result": "MAJORITY_DISAGREE",
+        "agreeCount": 0,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      },
+      {
+        "run": 2,
+        "citationId": "6f66ad85d15f",
+        "registerTx": "0x5144356160bb98cd3cc189f4427cbd7d74473ccc93a3e56efd0f8eded4d8cfda",
+        "auditTx": "0xacbbb61eaf302fb4b6bf35375e5869733a9e8480dc4c9ee5901da9cf05d78ea3",
+        "durationSec": 38.22,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 3,
+        "totalVotes": 5,
+        "auditClass": "MATERIAL"
+      },
+      {
+        "run": 3,
+        "citationId": "6f66ad85d15f",
+        "registerTx": "0x18dc403d00e8f94fd102f46890e1f30c98989f281307fc7fad5070453e40cfb1",
+        "auditTx": "0xf97db0c77de3c37e38302ea47387eb930e6ef56505d5aa1ae8e1cf0cd4ab33de",
+        "durationSec": 8.52,
+        "status": "ACCEPTED",
+        "result": "MAJORITY_AGREE",
+        "agreeCount": 5,
+        "totalVotes": 5,
+        "auditClass": "MATERIAL"
+      }
+    ],
+    "groundingOnly": [
+      {
+        "run": 1,
+        "citationId": "6c1e52dfcb54",
+        "registerTx": "0x0abb063a987c87e8225aa51b0e448858beb2461a4875abea6d48b234eb57a551",
+        "auditTx": "0xe45110ffe6e49e9645163ed5a19b12628c452345b3b239d25c0854d89f6fb42b",
+        "durationSec": 52.04,
+        "status": "UNDETERMINED",
+        "result": "MAJORITY_DISAGREE",
+        "agreeCount": 0,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      },
+      {
+        "run": 2,
+        "citationId": "6c1e52dfcb54",
+        "registerTx": "0x505001e12943dd18f5385bb54028c5ccd6eaa526c6e7a1f599f9de8b7cee9371",
+        "auditTx": "0x64a3979a25b51ccdf7d49fb5559e0d25303965bc136d3d860edff6587c0c602a",
+        "durationSec": 81.42,
+        "status": "UNDETERMINED",
+        "result": "MAJORITY_DISAGREE",
+        "agreeCount": 0,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      },
+      {
+        "run": 3,
+        "citationId": "6c1e52dfcb54",
+        "registerTx": "0x6c12ad7a06e354841ae74bd784d0fda3bcbca48f3c78621e6f78dd63c44d62e7",
+        "auditTx": "0x760b345d5f9b4960d4d87a1fb5ccd433fc482f5b48bcaa0771d4d1e21d255f35",
+        "durationSec": 64.9,
+        "status": "UNDETERMINED",
+        "result": "MAJORITY_DISAGREE",
+        "agreeCount": 0,
+        "totalVotes": 5,
+        "auditClass": "UNKNOWN"
+      }
+    ]
+  }
+}
