@@ -53,8 +53,7 @@ function renderEvidence() {
 
   const s5 = evidence.cases.scenario_removed;
   if (s5) {
-    const outcome = s5.auditClass ? `\`${s5.auditClass}\` (Model Decided: ABSENT)` : `(Audit Revert: \`invalid model output\`)`;
-    md += `| **Scenario 5: REMOVED Drift Audit** (Charles Babbage) | \`${s5.citationId}\`<br>oldid ${s5.targetOldid} | \`${s5.registerTx}\` | \`${s5.auditTx}\` | Register: ${s5.registerAgree}<br>Audit: ${s5.auditAgree} | ${outcome} | \`${s5.finalStatus}\` |\n`;
+    md += `| **Scenario 5: REMOVED Drift Audit (Attempted on-chain, reverted)** | \`${s5.citationId}\`<br>oldid ${s5.targetOldid} | \`${s5.registerTx}\` | \`${s5.auditTx}\` | Register: ${s5.registerAgree}<br>Audit: ${s5.auditAgree} | (Attempted on-chain, reverted: \`invalid model output\`) | \`${s5.finalStatus}\` |\n`;
   }
 
   const s6 = evidence.cases.scenario_claims_board;
@@ -66,23 +65,33 @@ function renderEvidence() {
     const fm = evidence.finalizedMeasurement;
     md += `\n**Transaction Finality Measurement (Scenario 7):**\n`;
     md += `- Measured Transaction: \`${fm.txHash}\`\n`;
-    md += `- Status Transition: \`${fm.finalStatus}\` in ${fm.elapsedSeconds}s (${fm.polls} polls)\n\n`;
+    md += `- Real-Time Elapsed: Transitioned to \`${fm.finalStatus}\` in ${fm.elapsedSeconds}s (${fm.polls} polls from local submit timestamp)\n\n`;
   }
 
-  md += `\n### Explicit Classification: On-Chain vs. Unit-Tested Only\n\n`;
+  md += `### Attempted On-Chain, Reverted (REMOVED Audits)\n\n`;
+  md += `A reverted audit is not evidence that REMOVED state transition works on-chain. On GenLayer Studionet, when an element is completely absent from presented passages, live validator LLM policies (\`prd-minimax\`, \`openai/gpt-5.4\`, \`prd-mistral\`) produce formatting variations or non-bare JSON that fail the contract's strict schema validator, triggering \`invalid model output\`. Under Issue 2 failure verification, validators probe their model and accept the leader's failure, causing the transaction to revert. While the leader receipt logs token counts, raw output tokens are not exposed on-chain. Therefore, **REMOVED state transition success is unit-tested only**.\n\n`;
+  md += `| Target Scenario | Citation ID / Target | Audit Transaction Hash | Status | Consensus | Agreement | Decoded Revert Payload |\n`;
+  md += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+
+  const remList = evidence.removedAttempts || [];
+  for (const ra of remList) {
+    md += `| **${ra.name}** | \`${ra.citationId}\`<br>oldid ${ra.targetOldid} | \`${ra.txHash}\` | ${ra.status} | ${ra.result} | ${ra.agreeCount} | \`${ra.revertPayload}\` |\n`;
+  }
+  md += `\n`;
+
+  md += `### Explicit Classification: On-Chain vs. Unit-Tested Only\n\n`;
   md += `In strict compliance with the Honesty Rules, behavior is partitioned by where evidence was obtained:\n\n`;
   md += `#### Verified On-Chain (GenLayer Studionet Preview)\n`;
   md += `- **UNCHANGED Deterministic Path**: Fully verified on-chain (Alan Turing revision 1380390650, Tx \`${s1?.auditTx}\`, status \`ACCEPTED\`, consensus \`MAJORITY_AGREE\`, ${s1?.auditAgree} votes). Both leader and validators matched quote verbatim without invoking model.\n`;
   md += `- **LIVE Article Consensus Payload**: Fully verified on-chain (/wiki/Alan_Turing, Tx \`${s2?.auditTx}\`, status \`ACCEPTED\`, consensus \`MAJORITY_AGREE\`, ${s2?.auditAgree} votes). Excluding live fingerprint and character counts from consensus payload resolved consensus disagreement.\n`;
   md += `- **COSMETIC Drift (Independent Model Consensus)**: Fully verified on-chain (Computing revision 1380219262, Tx \`${s3?.auditTx}\`, status \`ACCEPTED\`, consensus \`MAJORITY_AGREE\`, ${s3?.auditAgree} votes). Validators independently executed model classification within \`gl.vm.spawn_sandbox\` and achieved consensus on status \`REPHRASED\`.\n`;
   md += `- **MATERIAL Drift (Independent Model Consensus)**: Fully verified on-chain (Python Foundation revision 1379380903, Tx \`${s4?.auditTx}\`, status \`ACCEPTED\`, consensus \`MAJORITY_AGREE\`, ${s4?.auditAgree} votes). Real prose sentence fact change independently classified as status \`CHANGED\` across validators.\n`;
-  md += `- **REMOVED Audit Failure Verification (Issue 2)**: Fully verified on-chain (Charles Babbage revision 1378652484, Tx \`${s5?.auditTx}\`, status \`ACCEPTED\`, consensus \`MAJORITY_AGREE\`, ${s5?.auditAgree} votes). Validator probe re-verified failure on complete deletion rather than waving it through, and transaction reverted with decoded payload \`invalid model output\`.\n`;
   md += `- **ClaimsBoard Cross-Contract Badge Transition**: Fully verified on-chain (Claim \`${s6?.claimId}\`, Publish Tx \`${s6?.publishTx}\`, Refresh Tx \`${s6?.refreshTx}\`). Claim initialized with badge \`VERIFIED\`, citation drifted to \`MATERIAL\`, and \`refresh_claim\` transitioned badge to \`DRIFTED\`, recording \`badge_history: ["VERIFIED", "DRIFTED"]\`.\n`;
   md += `- **13 Negative Revert Scenarios**: All 13 negative test transactions reverted on-chain with exact decoded error payloads accepted by validators.\n\n`;
 
   md += `#### Unit-Tested Only (Not On-Chain)\n`;
-  md += `- **REMOVED Drift Successful State Transition**: Verified in 29 passing offline unit tests (\`test_audit_citation_removed_drift\`) where simulated LLM returns valid bare JSON for absent elements.\n`;
-  md += `- **Absence Calibration Threshold Grid**: Evaluated across 16 Wikipedia revision pairs (8 deleted, 8 reworded) via offline script \`scripts/tools/calibrate_absence.py\` yielding empirical separation margin between 0.2963 (max deleted) and 0.4776 (min reworded) around threshold 0.45.\n`;
+  md += `- **REMOVED Drift Successful State Transition**: Verified in 29 passing offline unit tests (\`test_audit_citation_removed_drift\`) where simulated LLM returns valid bare JSON for absent elements. On-chain audits reverted with \`invalid model output\`.\n`;
+  md += `- **Empirical Absence Threshold Evaluation & Controls**: Evaluated across 8 real deleted-sentence pairs, 5 unrelated controls, and 8 reworded pairs (including changed-but-similar sentences) via offline script \`scripts/tools/calibrate_absence.py\` yielding empirical separation margin between 0.3147 (max real deleted) and 0.4776 (min reworded) around threshold 0.45.\n`;
   md += `- **Bounded Leader Retry Mock Fallback**: Unit-tested in \`test_layer3_consensus.py\` verifying behavior when simulated LLM outputs invalid JSON before returning valid payload on retry.\n\n`;
 
   md += `### On-Chain Negative Tests & Revert Payloads (13 Tests)\n\n`;

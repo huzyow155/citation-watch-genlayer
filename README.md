@@ -74,13 +74,23 @@ The table below is generated from `scripts/deploy/live_evidence.json` and record
 | **Scenario 2: LIVE Page Audit & Multi-Audit History** | `bbee352df865`<br>/wiki/Alan_Turing | (inherited from S1) | `0xc7d06524a9096bfcdf0f75c691f1a2c2cfe8861548f85e91f707cb8d2a90eefc` | Audit: 3/5 | `UNCHANGED` (Live Consensus Verified) | `HEALTHY` (2 Audits in History) |
 | **Scenario 3: COSMETIC Drift Audit** (Computing Wording) | `4f3305759701`<br>oldid 1380219262 | `0x72de77de0257790c6a7b7cb8fcf5c62df70b542aa1e433057519ec5c2ca695ec` | `0xada45043809d4aec8ef6fe70cd5df6435e823c191d851bc9886b840a6e229460` | Register: 3/5<br>Audit: 3/5 | `COSMETIC` (Model Decided: REPHRASED) | `HEALTHY` |
 | **Scenario 4: MATERIAL Drift Audit** (Python Foundation) | `59a2e370301f`<br>oldid 1379380903 | `0xdd6d078e80d98affc5435d5ca941e0ee50f842107f4aff679c0522f6829bcbdf` | `0xed419e9b817c4e0b034f613957224a12c2b790055e2e139b245961b03adcfc39` | Register: 3/5<br>Audit: 3/5 | `MATERIAL` (Model Decided: CHANGED) | `DRIFTED` |
-| **Scenario 5: REMOVED Drift Audit** (Charles Babbage) | `4339810e1be9`<br>oldid 1378652484 | `0xa6dab9f59c5702b5d46daf7670e1637142ccaeabe2f1bf05a9b08d42ecd659e4` | `0x67971b146bbb501339da8b8017b7daf596e517c30e0ac5dc14d43af7a84825b4` | Register: 3/5<br>Audit: 3/5 | (Audit Revert: `invalid model output`) | `UNAUDITED` |
+| **Scenario 5: REMOVED Drift Audit (Attempted on-chain, reverted)** | `4339810e1be9`<br>oldid 1378652484 | `0xa6dab9f59c5702b5d46daf7670e1637142ccaeabe2f1bf05a9b08d42ecd659e4` | `0x67971b146bbb501339da8b8017b7daf596e517c30e0ac5dc14d43af7a84825b4` | Register: 3/5<br>Audit: 3/5 | (Attempted on-chain, reverted: `invalid model output`) | `UNAUDITED` |
 | **Scenario 6: ClaimsBoard Badge Transition** | Claim: `56d9663a46e2`<br>Citation: `a68c69aa9a4d` | Publish: `0x4cdb8f24b802873744cb9f170963d55975e83cf70133a11cbda8974df852ced3` | Refresh: `0x4aef43f12493bfeadb60a14f265db5ed74883ac5262b6d354443c11117b40c5f` | Publish: 3/5<br>Refresh: 4/5 | Initial: `VERIFIED`<br>Refreshed: `DRIFTED` | History: `[VERIFIED, DRIFTED]` |
 
 **Transaction Finality Measurement (Scenario 7):**
-- Measured Transaction: `0x4480823e8b6299c1aa9105e59231f4b4e12be10b102966e493a48f9101619268`
-- Status Transition: `FINALIZED` in 0.33s (1 polls)
+- Measured Transaction: `0xf730a365f584bc2d46aa33ce78fa9bd8f1061e5fecb0f548222259e1eb4a9835`
+- Real-Time Elapsed: Transitioned to `FINALIZED` in 79.82s (11 polls from local submit timestamp)
 
+### Attempted On-Chain, Reverted (REMOVED Audits)
+
+A reverted audit is not evidence that REMOVED state transition works on-chain. On GenLayer Studionet, when an element is completely absent from presented passages, live validator LLM policies (`prd-minimax`, `openai/gpt-5.4`, `prd-mistral`) produce formatting variations or non-bare JSON that fail the contract's strict schema validator, triggering `invalid model output`. Under Issue 2 failure verification, validators probe their model and accept the leader's failure, causing the transaction to revert. While the leader receipt logs token counts, raw output tokens are not exposed on-chain. Therefore, **REMOVED state transition success is unit-tested only**.
+
+| Target Scenario | Citation ID / Target | Audit Transaction Hash | Status | Consensus | Agreement | Decoded Revert Payload |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Charles Babbage Death Detail** | `4339810e1be9`<br>oldid 1378652484 | `0x67971b146bbb501339da8b8017b7daf596e517c30e0ac5dc14d43af7a84825b4` | ACCEPTED | MAJORITY_AGREE | 3/5 | `invalid model output` |
+| **Albert Einstein Israeli Address Detail** | `a68c69aa9a4d`<br>oldid 1362681578 | `0x99a0d74bed90753464a2db90f52d25beb100e52e7a9f8dd185fce7d1de180c42` | ACCEPTED | MAJORITY_AGREE | 4/5 | `target title must match baseline title` |
+| **Scratch Platform Introduction** | `5b0443a8f7bf`<br>oldid 1376243974 | `0xcf187edb60e269dd405e3b254eec9d8c42f6a342849db9e29db01c5954788381` | ACCEPTED | MAJORITY_AGREE | 3/5 | `invalid model output` |
+| **Software Creation Landscape Claim** | `2497410551e9`<br>oldid 1374736226 | `0xb346021fc54d9ea5976095688f3b6c23ae57656f74526d3de5d6d3963c5c74ee` | ACCEPTED | MAJORITY_AGREE | 3/5 | `invalid model output` |
 
 ### Explicit Classification: On-Chain vs. Unit-Tested Only
 
@@ -91,13 +101,12 @@ In strict compliance with the Honesty Rules, behavior is partitioned by where ev
 - **LIVE Article Consensus Payload**: Fully verified on-chain (/wiki/Alan_Turing, Tx `0xc7d06524a9096bfcdf0f75c691f1a2c2cfe8861548f85e91f707cb8d2a90eefc`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes). Excluding live fingerprint and character counts from consensus payload resolved consensus disagreement.
 - **COSMETIC Drift (Independent Model Consensus)**: Fully verified on-chain (Computing revision 1380219262, Tx `0xada45043809d4aec8ef6fe70cd5df6435e823c191d851bc9886b840a6e229460`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes). Validators independently executed model classification within `gl.vm.spawn_sandbox` and achieved consensus on status `REPHRASED`.
 - **MATERIAL Drift (Independent Model Consensus)**: Fully verified on-chain (Python Foundation revision 1379380903, Tx `0xed419e9b817c4e0b034f613957224a12c2b790055e2e139b245961b03adcfc39`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes). Real prose sentence fact change independently classified as status `CHANGED` across validators.
-- **REMOVED Audit Failure Verification (Issue 2)**: Fully verified on-chain (Charles Babbage revision 1378652484, Tx `0x67971b146bbb501339da8b8017b7daf596e517c30e0ac5dc14d43af7a84825b4`, status `ACCEPTED`, consensus `MAJORITY_AGREE`, 3/5 votes). Validator probe re-verified failure on complete deletion rather than waving it through, and transaction reverted with decoded payload `invalid model output`.
 - **ClaimsBoard Cross-Contract Badge Transition**: Fully verified on-chain (Claim `56d9663a46e2`, Publish Tx `0x4cdb8f24b802873744cb9f170963d55975e83cf70133a11cbda8974df852ced3`, Refresh Tx `0x4aef43f12493bfeadb60a14f265db5ed74883ac5262b6d354443c11117b40c5f`). Claim initialized with badge `VERIFIED`, citation drifted to `MATERIAL`, and `refresh_claim` transitioned badge to `DRIFTED`, recording `badge_history: ["VERIFIED", "DRIFTED"]`.
 - **13 Negative Revert Scenarios**: All 13 negative test transactions reverted on-chain with exact decoded error payloads accepted by validators.
 
 #### Unit-Tested Only (Not On-Chain)
-- **REMOVED Drift Successful State Transition**: Verified in 29 passing offline unit tests (`test_audit_citation_removed_drift`) where simulated LLM returns valid bare JSON for absent elements.
-- **Absence Calibration Threshold Grid**: Evaluated across 16 Wikipedia revision pairs (8 deleted, 8 reworded) via offline script `scripts/tools/calibrate_absence.py` yielding empirical separation margin between 0.2963 (max deleted) and 0.4776 (min reworded) around threshold 0.45.
+- **REMOVED Drift Successful State Transition**: Verified in 29 passing offline unit tests (`test_audit_citation_removed_drift`) where simulated LLM returns valid bare JSON for absent elements. On-chain audits reverted with `invalid model output`.
+- **Empirical Absence Threshold Evaluation & Controls**: Evaluated across 8 real deleted-sentence pairs, 5 unrelated controls, and 8 reworded pairs (including changed-but-similar sentences) via offline script `scripts/tools/calibrate_absence.py` yielding empirical separation margin between 0.3147 (max real deleted) and 0.4776 (min reworded) around threshold 0.45.
 - **Bounded Leader Retry Mock Fallback**: Unit-tested in `test_layer3_consensus.py` verifying behavior when simulated LLM outputs invalid JSON before returning valid payload on retry.
 
 ### On-Chain Negative Tests & Revert Payloads (13 Tests)

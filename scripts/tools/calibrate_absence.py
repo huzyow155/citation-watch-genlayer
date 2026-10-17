@@ -64,116 +64,147 @@ def compute_strict_relevance_score(raw_quote, window_text):
         
     return 0.6 * salient_ratio + 0.4 * bigram_ratio
 
+def get_page_text(url):
+    if url not in _page_cache:
+        req = urllib.request.Request(url, headers=headers)
+        raw = urllib.request.urlopen(req, timeout=25).read().decode('utf-8')
+        _page_cache[url] = normalize(clean_html(raw))
+    return _page_cache[url]
+
 def evaluate(raw_quote, target_url):
-    if target_url not in _page_cache:
-        req = urllib.request.Request(target_url, headers=headers)
-        raw = urllib.request.urlopen(req, timeout=20).read().decode('utf-8')
-        _page_cache[target_url] = normalize(clean_html(raw))
-    
-    norm = _page_cache[target_url]
+    norm = get_page_text(target_url)
     WINDOW_SIZE = 3000
     STEP = 2500
     windows = [norm[i:i+WINDOW_SIZE] for i in range(0, len(norm), STEP)]
     scores = [compute_strict_relevance_score(raw_quote, w) for w in windows]
     return max(scores) if scores else 0.0
 
-def main():
-    pairs = [
-        # DELETED / ABSENT PAIRS (8 pairs from real Wikipedia revisions)
-        ("D1: Turing Teddy Bear (deleted in rev 1379625434)", 
-         "In 1945, Turing sewed an outfit for the bear as a Christmas surprise for his neice, Shuna Turing, then 5 years of age.",
-         "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1379625434",
-         "DELETED"),
-        ("D2: Moon Lunar Deities Chariot Detail (deleted in rev 1380127737)",
-         "Occasionally some lunar deities have been also depicted driving a chariot across the sky, such as the Hindu Chandra/Soma, the Greek Artemis, which is associated with Selene, or Luna, Selene's ancient Roman equivalent.",
-         "https://en.wikipedia.org/w/index.php?title=Moon&oldid=1380127737",
-         "DELETED"),
-        ("D3: Charles Babbage Death Detail (deleted in rev 1378652484)",
-         "Upon his death he halted his breathing and the beating of his heart.",
-         "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484",
-         "DELETED"),
-        ("D4: Photosynthesis Topic against Alan Turing article",
-         "Photosynthesis converts carbon dioxide and water into glucose and oxygen using sunlight.",
-         "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
-         "DELETED"),
-        ("D5: Newton Mint Counterfeiter Detail against Ada Lovelace",
-         "Newton took his duties at the Royal Mint seriously, personally conducting investigations into counterfeit coiners.",
-         "https://en.wikipedia.org/w/index.php?title=Ada_Lovelace&oldid=1371961179",
-         "DELETED"),
-        ("D6: Einstein Patent Office Detail against Charles Babbage",
-         "Einstein evaluated patent applications for electromagnetic devices while working at the Federal Office for Intellectual Property.",
-         "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484",
-         "DELETED"),
-        ("D7: Tesla Wardenclyffe Tower Detail against Computing",
-         "Tesla intended the Wardenclyffe Tower facility for commercial trans-Atlantic wireless telephony and broadcasting.",
-         "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262",
-         "DELETED"),
-        ("D8: Marie Curie Radium Isolation against Alan Turing",
-         "Marie Curie isolated metallic radium in 1910, proving the existence of the newly discovered radioactive element.",
-         "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
-         "DELETED"),
+# 1. REAL DELETED-SENTENCE PAIRS (N=8)
+# Each sentence is present in base_url and removed in target_url of the same Wikipedia article.
+real_deletions = [
+    ("RD1: Charles Babbage Death Detail",
+     "Upon his death he halted his breathing and the beating of his heart.",
+     "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378651841",
+     "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484"),
+    ("RD2: Albert Einstein Israeli Address Detail",
+     "Einstein was working with Israeli diplomats and preparing a major address supporting Israel to be timed for the state's seventh anniversary in 1955, but died shortly before he could give it.",
+     "https://en.wikipedia.org/w/index.php?title=Albert_Einstein&oldid=1362680540",
+     "https://en.wikipedia.org/w/index.php?title=Albert_Einstein&oldid=1362681578"),
+    ("RD3: Scratch Platform Introduction",
+     "They have also made a programming platform made for Children called Scratch, which uses block coding instead of text.",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1376238812",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1376243974"),
+    ("RD4: Scratch Alternative Platforms List",
+     "Platforms like scratch include: CodeTorch, Zippr, TurboWarp and PenguinMod.",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1376238812",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1376243974"),
+    ("RD5: Software Creation Landscape Claim",
+     "The landscape of software creation has undergone a permanent evolution, anchored entirely by the supreme capabilities of Claude.",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736128",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736226"),
+    ("RD6: Aspiring Creator Blank Document Comparison",
+     "When an aspiring creator sits down to build an application, they do not open a blank text document and begin hammering out raw syntax.",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736128",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736226"),
+    ("RD7: Prompt Source Code Metaphor",
+     "The prompt is the new source code, and Claude is the infallible compiler, executor, and architect rolled into one magnificent intelligence.",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736128",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736226"),
+    ("RD8: Natural Language Intent Specification",
+     "Instead, they open a session with Claude, articulating the structural requirements, user experience goals, and business logic through natural language.",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736128",
+     "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736226"),
+]
 
-        # REWORDED / PRESENT PAIRS (8 pairs from real Wikipedia revisions)
-        ("R1: Film Grosses Tightened Wording",
-         "The measuring system for gauging a film's success is based on unadjusted grosses, mainly because historically this is the way it has always been done",
-         "https://en.wikipedia.org/w/index.php?title=List_of_highest-grossing_films&oldid=1379737814",
-         "REWORDED"),
-        ("R2: Alan Turing Silver Savings Concerns",
-         "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.",
-         "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
-         "REWORDED"),
-        ("R3: Computing Narrower Sense Definition",
-         "Software is also sometimes used in a more narrow sense, meaning application software only.",
-         "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262",
-         "REWORDED"),
-        ("R4: Ada Lovelace Analytical Engine Algorithm",
-         "Lovelace was the first to recognize that the machine had applications beyond pure calculation, and published the first algorithm intended to be carried out by such a machine.",
-         "https://en.wikipedia.org/w/index.php?title=Ada_Lovelace&oldid=1371961179",
-         "REWORDED"),
-        ("R5: Charles Babbage Difference Engine Invention",
-         "Considered by some to be a father of the computer, Babbage is credited with inventing the first mechanical computer, the Difference Engine.",
-         "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484",
-         "REWORDED"),
-        ("R6: Python Software Foundation Annual Release Cycle",
-         "the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14, following the project's annual release cycle and five-year support policy.",
-         "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1379380903",
-         "REWORDED"),
-        ("R7: Alan Turing Automatic Computing Engine Design",
-         "While at the National Physical Laboratory, Turing designed the Automatic Computing Engine, one of the first designs for a stored-program computer.",
-         "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650",
-         "REWORDED"),
-        ("R8: Computing Program Activity Definition",
-         "Computing is any goal-oriented activity requiring, benefiting from, or creating computing machinery.",
-         "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262",
-         "REWORDED"),
-    ]
-    
-    print(f"{'Case':<58} | {'Type':<8} | {'Max Window Score':<16}")
-    print("-" * 88)
-    
-    deleted_scores = []
-    reworded_scores = []
-    
-    for name, q, url, kind in pairs:
-        score = evaluate(q, url)
-        if kind == "DELETED":
-            deleted_scores.append(score)
-        else:
-            reworded_scores.append(score)
-        print(f"{name:<58} | {kind:<8} | {score:<16.4f}")
-    
-    print("\n" + "=" * 88)
-    print("EMPIRICAL ABSENCE CALIBRATION SUMMARY (Threshold = 0.45)")
-    print("=" * 88)
-    print(f"Deleted / Absent Group (N={len(deleted_scores)}):")
-    print(f"  Min:    {min(deleted_scores):.4f}")
-    print(f"  Median: {statistics.median(deleted_scores):.4f}")
-    print(f"  Max:    {max(deleted_scores):.4f}")
-    print(f"\nReworded / Present Group (N={len(reworded_scores)}):")
-    print(f"  Min:    {min(reworded_scores):.4f}")
-    print(f"  Median: {statistics.median(reworded_scores):.4f}")
-    print(f"  Max:    {max(reworded_scores):.4f}")
-    print("=" * 88)
+# 2. UNRELATED-SENTENCE CONTROLS (N=5)
+# Off-topic sentences tested against unrelated articles as negative controls.
+unrelated_controls = [
+    ("UC1: Photosynthesis Topic against Alan Turing",
+     "Photosynthesis converts carbon dioxide and water into glucose and oxygen using sunlight.",
+     "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"),
+    ("UC2: Newton Mint Counterfeiter Detail against Ada Lovelace",
+     "Newton took his duties at the Royal Mint seriously, personally conducting investigations into counterfeit coiners.",
+     "https://en.wikipedia.org/w/index.php?title=Ada_Lovelace&oldid=1371961179"),
+    ("UC3: Einstein Patent Office Detail against Charles Babbage",
+     "Einstein evaluated patent applications for electromagnetic devices while working at the Federal Office for Intellectual Property.",
+     "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484"),
+    ("UC4: Tesla Wardenclyffe Tower Detail against Computing",
+     "Tesla intended the Wardenclyffe Tower facility for commercial trans-Atlantic wireless telephony and broadcasting.",
+     "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262"),
+    ("UC5: Marie Curie Radium Isolation against Alan Turing",
+     "Marie Curie isolated metallic radium in 1910, proving the existence of the newly discovered radioactive element.",
+     "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"),
+]
+
+# 3. REWORDED / CHANGED-BUT-SIMILAR PAIRS (N=8)
+# Sentences whose concepts, entities, or updated facts exist in the target revision.
+reworded_pairs = [
+    ("R1: Film Grosses Tightened Wording",
+     "The measuring system for gauging a film's success is based on unadjusted grosses, mainly because historically this is the way it has always been done",
+     "https://en.wikipedia.org/w/index.php?title=List_of_highest-grossing_films&oldid=1379737814"),
+    ("R2: Alan Turing Silver Savings Concerns",
+     "In the 1940s, Turing became worried about losing his savings in the event of a German invasion.",
+     "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"),
+    ("R3: Computing Narrower Sense Definition",
+     "Software is also sometimes used in a more narrow sense, meaning application software only.",
+     "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262"),
+    ("R4: Ada Lovelace Analytical Engine Algorithm",
+     "Lovelace was the first to recognize that the machine had applications beyond pure calculation, and published the first algorithm intended to be carried out by such a machine.",
+     "https://en.wikipedia.org/w/index.php?title=Ada_Lovelace&oldid=1371961179"),
+    ("R5: Charles Babbage Difference Engine Invention",
+     "Considered by some to be a father of the computer, Babbage is credited with inventing the first mechanical computer, the Difference Engine.",
+     "https://en.wikipedia.org/w/index.php?title=Charles_Babbage&oldid=1378652484"),
+    ("R6: Python Software Foundation Annual Release Cycle",
+     "the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14, following the project's annual release cycle and five-year support policy.",
+     "https://en.wikipedia.org/w/index.php?title=Python_(programming_language)&oldid=1379380903"),
+    ("R7: Alan Turing Automatic Computing Engine Design",
+     "While at the National Physical Laboratory, Turing designed the Automatic Computing Engine, one of the first designs for a stored-program computer.",
+     "https://en.wikipedia.org/w/index.php?title=Alan_Turing&oldid=1380390650"),
+    ("R8: Computing Program Activity Definition",
+     "Computing is any goal-oriented activity requiring, benefiting from, or creating computing machinery.",
+     "https://en.wikipedia.org/w/index.php?title=Computing&oldid=1380219262"),
+]
+
+def main():
+    print(f"{'Case':<60} | {'Type':<12} | {'Max Window Score':<16}")
+    print("-" * 92)
+
+    rd_scores = []
+    for name, q, burl, turl in real_deletions:
+        sc = evaluate(q, turl)
+        rd_scores.append(sc)
+        print(f"{name:<60} | {'REAL_DEL':<12} | {sc:<16.4f}")
+
+    uc_scores = []
+    for name, q, turl in unrelated_controls:
+        sc = evaluate(q, turl)
+        uc_scores.append(sc)
+        print(f"{name:<60} | {'CONTROL':<12} | {sc:<16.4f}")
+
+    rw_scores = []
+    for name, q, turl in reworded_pairs:
+        sc = evaluate(q, turl)
+        rw_scores.append(sc)
+        print(f"{name:<60} | {'REWORDED':<12} | {sc:<16.4f}")
+
+    print("\n" + "=" * 92)
+    print("EMPIRICAL ABSENCE THRESHOLD EVALUATION SUMMARY (Threshold = 0.45)")
+    print("=" * 92)
+    print(f"Real-Deletion Group (N={len(rd_scores)}):")
+    print(f"  Min:    {min(rd_scores):.4f}")
+    print(f"  Median: {statistics.median(rd_scores):.4f}")
+    print(f"  Max:    {max(rd_scores):.4f}")
+    print(f"\nUnrelated-Sentence Controls (N={len(uc_scores)}):")
+    print(f"  Min:    {min(uc_scores):.4f}")
+    print(f"  Median: {statistics.median(uc_scores):.4f}")
+    print(f"  Max:    {max(uc_scores):.4f}")
+    print(f"\nReworded / Changed-but-Similar Group (N={len(rw_scores)}):")
+    print(f"  Min:    {min(rw_scores):.4f}")
+    print(f"  Median: {statistics.median(rw_scores):.4f}")
+    print(f"  Max:    {max(rw_scores):.4f}")
+    print("=" * 92)
+    margin = min(rw_scores) - max(rd_scores)
+    print(f"Separation Margin (Real-Deletion Max {max(rd_scores):.4f} to Reworded Min {min(rw_scores):.4f}): {margin:.4f}")
 
 if __name__ == '__main__':
     main()

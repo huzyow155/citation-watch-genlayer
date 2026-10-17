@@ -99960,6 +99960,147 @@
       "totalVotes": 5,
       "leaderResult": "live audit cooldown active",
       "timestamp": "2026-10-16T11:17:51.564Z"
+    },
+    {
+      "desc": "Register Einstein Citation",
+      "fnName": "register_citation",
+      "args": [
+        "Albert Einstein Israeli Address",
+        "https://en.wikipedia.org/w/index.php?title=Albert_Einstein&oldid=1362680540",
+        "[\"Einstein was working with Israeli diplomats and preparing a major address supporting Israel to be timed for the state's seventh anniversary in 1955, but died shortly before he could give it.\"]"
+      ],
+      "txHash": "0xf730a365f584bc2d46aa33ce78fa9bd8f1061e5fecb0f548222259e1eb4a9835",
+      "durationSec": "46.05",
+      "status": "UNDETERMINED",
+      "result": "MAJORITY_DISAGREE",
+      "agreeCount": 1,
+      "totalVotes": 5,
+      "votes": {
+        "0x60929ddB1a5E6Db6f1E198038E0D56547c10f275": "disagree",
+        "0x6BCDDf292694Ec8AA930A53812DbBB546731bC17": "idle",
+        "0x91007854a2C4d4ec5e5148a94B15FdF0Ba013e7a": "disagree",
+        "0xF9fbED11ED0C4BbcE404f9c48591233a688883B6": "agree",
+        "0xd7dfBe383b6421cdE13b94ED62f81772156B4a43": "disagree"
+      },
+      "leaderResult": "\u0000",
+      "timestamp": "2026-10-17T02:22:51.636Z"
+    },
+    {
+      "desc": "Audit Einstein Citation Against Later Revision (REMOVED Attempt 1)",
+      "fnName": "audit_citation",
+      "args": [
+        "a68c69aa9a4d",
+        "https://en.wikipedia.org/w/index.php?title=Albert_Einstein&oldid=1362681578"
+      ],
+      "txHash": "0x99a0d74bed90753464a2db90f52d25beb100e52e7a9f8dd185fce7d1de180c42",
+      "durationSec": "5.37",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": 4,
+      "totalVotes": 5,
+      "votes": {
+        "0x02282326D058fE2d889F41BF01E14A72D800fa6F": "agree",
+        "0x46f3e6B8E4D246a1c29E60Dece3709f4F115ab7F": "agree",
+        "0x60929ddB1a5E6Db6f1E198038E0D56547c10f275": "agree",
+        "0x7902A9B1893526Db7C3cdCf9CAb88F9B408890cC": "agree",
+        "0x84b5C0320Cf213d1e0F4313aD46dBde0cBA3a48b": "idle"
+      },
+      "leaderResult": "target title must match baseline title",
+      "timestamp": "2026-10-17T02:24:12.794Z"
+    },
+    {
+      "desc": "Register Scratch Citation",
+      "fnName": "register_citation",
+      "args": [
+        "Scratch Platform Intro",
+        "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1376238812",
+        "[\"They have also made a programming platform made for Children called Scratch, which uses block coding instead of text.\"]"
+      ],
+      "txHash": "0x7455394083a4beb901869853632fc0222558cf876cf85ed377db791c6d6f4c66",
+      "durationSec": "8.59",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": 3,
+      "totalVotes": 5,
+      "votes": {
+        "0x7902A9B1893526Db7C3cdCf9CAb88F9B408890cC": "agree",
+        "0x84b5C0320Cf213d1e0F4313aD46dBde0cBA3a48b": "idle",
+        "0x91007854a2C4d4ec5e5148a94B15FdF0Ba013e7a": "idle",
+        "0xEcf0fed53b8baf5A6d376CFF2894aa66fcBCa13C": "agree",
+        "0xF9fbED11ED0C4BbcE404f9c48591233a688883B6": "agree"
+      },
+      "leaderResult": "\u0000",
+      "timestamp": "2026-10-17T02:24:18.161Z"
+    },
+    {
+      "desc": "Audit Scratch Citation Against Later Revision (REMOVED Attempt 2)",
+      "fnName": "audit_citation",
+      "args": [
+        "5b0443a8f7bf",
+        "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1376243974"
+      ],
+      "txHash": "0xcf187edb60e269dd405e3b254eec9d8c42f6a342849db9e29db01c5954788381",
+      "durationSec": "21.95",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": 3,
+      "totalVotes": 5,
+      "votes": {
+        "0x044f5Cb4DB97843236A9ee36BBE6bA2CE827DEf5": "agree",
+        "0x7405D7e5f9e1016ed13847B93Bcf7D8553688Ec9": "idle",
+        "0x91007854a2C4d4ec5e5148a94B15FdF0Ba013e7a": "idle",
+        "0xF769c4bB25c74773982dFAE52dEB2A1A0B6c7A4B": "agree",
+        "0xbbA7b5E4630DC0db7f98939Db9bD8c47C5d7f0b8": "agree"
+      },
+      "leaderResult": "invalid model output",
+      "timestamp": "2026-10-17T02:24:28.076Z"
+    },
+    {
+      "desc": "Register Software Creation Claim Citation",
+      "fnName": "register_citation",
+      "args": [
+        "Software Creation Landscape Claim",
+        "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736128",
+        "[\"The landscape of software creation has undergone a permanent evolution, anchored entirely by the supreme capabilities of Claude.\"]"
+      ],
+      "txHash": "0x8bc7cbc27fa303641842d32bbe8dc2f4dde743ba84202054eb6bfe1aa344d5ef",
+      "durationSec": "8.72",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": 3,
+      "totalVotes": 5,
+      "votes": {
+        "0x6BCDDf292694Ec8AA930A53812DbBB546731bC17": "agree",
+        "0x84b5C0320Cf213d1e0F4313aD46dBde0cBA3a48b": "idle",
+        "0xacb3A709E6212931De1a712a1710a6955c7d40c0": "agree",
+        "0xbbA7b5E4630DC0db7f98939Db9bD8c47C5d7f0b8": "agree",
+        "0xd7dfBe383b6421cdE13b94ED62f81772156B4a43": "idle"
+      },
+      "leaderResult": "\u0000",
+      "timestamp": "2026-10-17T02:24:50.024Z"
+    },
+    {
+      "desc": "Audit Software Creation Claim Citation Against Later Revision (REMOVED Attempt 3)",
+      "fnName": "audit_citation",
+      "args": [
+        "2497410551e9",
+        "https://en.wikipedia.org/w/index.php?title=Computer_programming&oldid=1374736226"
+      ],
+      "txHash": "0xb346021fc54d9ea5976095688f3b6c23ae57656f74526d3de5d6d3963c5c74ee",
+      "durationSec": "18.55",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": 3,
+      "totalVotes": 5,
+      "votes": {
+        "0x1b170f7676410646709fDF16A279Ae4f8c4dC7AE": "agree",
+        "0x46f3e6B8E4D246a1c29E60Dece3709f4F115ab7F": "agree",
+        "0x91007854a2C4d4ec5e5148a94B15FdF0Ba013e7a": "idle",
+        "0xF9fbED11ED0C4BbcE404f9c48591233a688883B6": "idle",
+        "0xc5dAA81d1eD1C0F2C6aD839b7FDe9f7D65AE27A3": "agree"
+      },
+      "leaderResult": "invalid model output",
+      "timestamp": "2026-10-17T02:25:00.066Z"
     }
   ],
   "cases": {
@@ -101056,9 +101197,56 @@
     }
   },
   "finalizedMeasurement": {
-    "txHash": "0x4480823e8b6299c1aa9105e59231f4b4e12be10b102966e493a48f9101619268",
-    "polls": 1,
-    "elapsedSeconds": "0.33",
-    "finalStatus": "FINALIZED"
-  }
+    "txHash": "0xf730a365f584bc2d46aa33ce78fa9bd8f1061e5fecb0f548222259e1eb4a9835",
+    "polls": 11,
+    "elapsedSeconds": "79.82",
+    "finalStatus": "FINALIZED",
+    "method": "real-time polling from submit timestamp"
+  },
+  "removedAttempts": [
+    {
+      "name": "Charles Babbage Death Detail",
+      "citationId": "4339810e1be9",
+      "baseOldid": "1378651841",
+      "targetOldid": "1378652484",
+      "txHash": "0x67971b146bbb501339da8b8017b7daf596e517c30e0ac5dc14d43af7a84825b4",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "invalid model output"
+    },
+    {
+      "name": "Albert Einstein Israeli Address Detail",
+      "citationId": "a68c69aa9a4d",
+      "baseOldid": "1362680540",
+      "targetOldid": "1362681578",
+      "txHash": "0x99a0d74bed90753464a2db90f52d25beb100e52e7a9f8dd185fce7d1de180c42",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "4/5",
+      "revertPayload": "target title must match baseline title"
+    },
+    {
+      "name": "Scratch Platform Introduction",
+      "citationId": "5b0443a8f7bf",
+      "baseOldid": "1376238812",
+      "targetOldid": "1376243974",
+      "txHash": "0xcf187edb60e269dd405e3b254eec9d8c42f6a342849db9e29db01c5954788381",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "invalid model output"
+    },
+    {
+      "name": "Software Creation Landscape Claim",
+      "citationId": "2497410551e9",
+      "baseOldid": "1374736128",
+      "targetOldid": "1374736226",
+      "txHash": "0xb346021fc54d9ea5976095688f3b6c23ae57656f74526d3de5d6d3963c5c74ee",
+      "status": "ACCEPTED",
+      "result": "MAJORITY_AGREE",
+      "agreeCount": "3/5",
+      "revertPayload": "invalid model output"
+    }
+  ]
 }

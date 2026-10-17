@@ -82,32 +82,42 @@ The relevance scoring metric between a tracked quote and an article window combi
    $$\text{Score} = 0.6 \times \text{salient\_ratio} + 0.4 \times \text{bigram\_ratio}$$
 3. **Calibrated Threshold**: Set to `RELEVANCE_THRESHOLD = 0.45`.
 
-### Empirical Absence Calibration Set (16 Pairs across Real Wikipedia Revisions)
-Evaluated across 8 genuine deleted-sentence scenarios and 8 reworded/present scenarios from documented Wikipedia revisions:
+### Empirical Absence Threshold Evaluation & Controls
 
-| ID | Article & Scenario | Quote Assertion | Kind | Max Window Score | Threshold (0.45) Separation |
+Evaluated across:
+1. **Real-Deletion Group ($N=8$)**: Sentences present in baseline revisions and truly removed in later revisions of the same Wikipedia article (both revision IDs documented).
+2. **Unrelated-Sentence Controls ($N=5$)**: Off-topic statements tested against unrelated articles as negative controls.
+3. **Reworded / Changed-but-Similar Group ($N=8$)**: Sentences whose concepts, entities, or updated facts exist in the target revision (including changed-but-similar sentences).
+
+| ID | Article & Scenario | Quote Assertion | Group | Max Window Score | Threshold (0.45) Separation |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **D1** | Alan Turing (rev 1379625434) | `"In 1945, Turing sewed an outfit for the bear..."` | DELETED | 0.0667 | Clean Absent (< 0.45) |
-| **D2** | Moon (rev 1380127737) | `"Occasionally some lunar deities have been also depicted driving a chariot..."` | DELETED | 0.2963 | Clean Absent (< 0.45) |
-| **D3** | Charles Babbage (rev 1378652484) | `"Upon his death he halted his breathing and the beating of his heart."` | DELETED | 0.1984 | Clean Absent (< 0.45) |
-| **D4** | Alan Turing (rev 1380390650) | Photosynthesis statement tested against Turing | DELETED | 0.0889 | Clean Absent (< 0.45) |
-| **D5** | Ada Lovelace (rev 1371961179) | Newton Mint counterfeiter detail against Lovelace | DELETED | 0.1556 | Clean Absent (< 0.45) |
-| **D6** | Charles Babbage (rev 1378652484) | Einstein patent office detail against Babbage | DELETED | 0.0988 | Clean Absent (< 0.45) |
-| **D7** | Computing (rev 1380219262) | Tesla Wardenclyffe Tower detail against Computing | DELETED | 0.1111 | Clean Absent (< 0.45) |
-| **D8** | Alan Turing (rev 1380390650) | Marie Curie Radium isolation against Turing | DELETED | 0.1543 | Clean Absent (< 0.45) |
-| **R1** | Film Grosses (rev 1379737814) | `"The measuring system for gauging a film's success is based on unadjusted grosses..."` | REWORDED | 0.7788 | Candidate Present (>= 0.45) |
-| **R2** | Alan Turing (rev 1380390650) | `"In the 1940s, Turing became worried about losing his savings..."` | REWORDED | 1.0000 | Candidate Present (>= 0.45) |
-| **R3** | Computing (rev 1380219262) | `"Software is also sometimes used in a more narrow sense..."` | REWORDED | 0.7429 | Candidate Present (>= 0.45) |
-| **R4** | Ada Lovelace (rev 1371961179) | `"Lovelace was the first to recognize that the machine had applications..."` | REWORDED | 0.9474 | Candidate Present (>= 0.45) |
-| **R5** | Charles Babbage (rev 1378652484) | `"Considered by some to be a father of the computer..."` | REWORDED | 0.9630 | Candidate Present (>= 0.45) |
-| **R6** | Python (rev 1379380903) | `"the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14..."` | REWORDED | 0.8912 | Candidate Present (>= 0.45) |
-| **R7** | Alan Turing (rev 1380390650) | `"While at the National Physical Laboratory, Turing designed the Automatic Computing Engine..."` | REWORDED | 0.4776 | Candidate Present (>= 0.45) |
-| **R8** | Computing (rev 1380219262) | `"Computing is any goal-oriented activity requiring, benefiting from..."` | REWORDED | 0.9333 | Candidate Present (>= 0.45) |
+| **RD1** | Charles Babbage (rev 1378651841 $\to$ 1378652484) | `"Upon his death he halted his breathing and the beating of his heart."` | Real Deletion | 0.2000 | Clean Absent (< 0.45) |
+| **RD2** | Albert Einstein (rev 1362680540 $\to$ 1362681578) | `"Einstein was working with Israeli diplomats and preparing a major address..."` | Real Deletion | 0.3147 | Clean Absent (< 0.45) |
+| **RD3** | Computer Programming (rev 1376238812 $\to$ 1376243974) | `"They have also made a programming platform made for Children called Scratch..."` | Real Deletion | 0.2250 | Clean Absent (< 0.45) |
+| **RD4** | Computer Programming (rev 1376238812 $\to$ 1376243974) | `"Platforms like scratch include: CodeTorch, Zippr, TurboWarp and PenguinMod."` | Real Deletion | 0.1714 | Clean Absent (< 0.45) |
+| **RD5** | Computer Programming (rev 1374736128 $\to$ 1374736226) | `"The landscape of software creation has undergone a permanent evolution..."` | Real Deletion | 0.1377 | Clean Absent (< 0.45) |
+| **RD6** | Computer Programming (rev 1374736128 $\to$ 1374736226) | `"When an aspiring creator sits down to build an application..."` | Real Deletion | 0.2000 | Clean Absent (< 0.45) |
+| **RD7** | Computer Programming (rev 1374736128 $\to$ 1374736226) | `"The prompt is the new source code, and Claude is the infallible compiler..."` | Real Deletion | 0.2400 | Clean Absent (< 0.45) |
+| **RD8** | Computer Programming (rev 1374736128 $\to$ 1374736226) | `"Instead, they open a session with Claude, articulating the structural..."` | Real Deletion | 0.2286 | Clean Absent (< 0.45) |
+| **UC1** | Alan Turing (rev 1380390650) | Photosynthesis statement tested against Turing | Control | 0.0667 | Clean Absent (< 0.45) |
+| **UC2** | Ada Lovelace (rev 1371961179) | Newton Mint counterfeiter detail against Lovelace | Control | 0.1564 | Clean Absent (< 0.45) |
+| **UC3** | Charles Babbage (rev 1378652484) | Einstein patent office detail against Babbage | Control | 0.1091 | Clean Absent (< 0.45) |
+| **UC4** | Computing (rev 1380219262) | Tesla Wardenclyffe Tower detail against Computing | Control | 0.1091 | Clean Absent (< 0.45) |
+| **UC5** | Alan Turing (rev 1380390650) | Marie Curie Radium isolation against Turing | Control | 0.1000 | Clean Absent (< 0.45) |
+| **R1** | Film Grosses (rev 1379737814) | `"The measuring system for gauging a film's success is based on unadjusted grosses..."` | Reworded | 0.7388 | Candidate Present (>= 0.45) |
+| **R2** | Alan Turing (rev 1380390650) | `"In the 1940s, Turing became worried about losing his savings..."` | Reworded | 1.0000 | Candidate Present (>= 0.45) |
+| **R3** | Computing (rev 1380219262) | `"Software is also sometimes used in a more narrow sense..."` | Reworded | 0.9200 | Candidate Present (>= 0.45) |
+| **R4** | Ada Lovelace (rev 1371961179) | `"Lovelace was the first to recognize that the machine had applications..."` | Reworded | 0.4776 | Candidate Present (>= 0.45) |
+| **R5** | Charles Babbage (rev 1378652484) | `"Considered by some to be a father of the computer..."` | Reworded | 0.9200 | Candidate Present (>= 0.45) |
+| **R6** | Python (rev 1379380903) | `"the Python Software Foundation supports Python 3.11, 3.12, 3.13, and 3.14..."` | Reworded | 0.9810 | Candidate Present (>= 0.45) |
+| **R7** | Alan Turing (rev 1380390650) | `"While at the National Physical Laboratory, Turing designed the Automatic..."` | Reworded | 0.7500 | Candidate Present (>= 0.45) |
+| **R8** | Computing (rev 1380219262) | `"Computing is any goal-oriented activity requiring, benefiting from..."` | Reworded | 0.5429 | Candidate Present (>= 0.45) |
 
-### Calibration Summary Metrics
-- **Deleted / Absent Group (N=8)**: Min: `0.0667` | Median: `0.1327` | Max: `0.2963`
-- **Reworded / Present Group (N=8)**: Min: `0.4776` | Median: `0.8350` | Max: `1.0000`
-- **Empirical Separation Margin**: The threshold of `0.45` separates both classes with a clear margin between max deleted (`0.2963`) and min reworded (`0.4776`).
+### Threshold Evaluation Summary Metrics
+- **Real-Deletion Group ($N=8$)**: Min: `0.1377` | Median: `0.2125` | Max: `0.3147`
+- **Unrelated-Sentence Controls ($N=5$)**: Min: `0.0667` | Median: `0.1091` | Max: `0.1564`
+- **Reworded / Changed-but-Similar Group ($N=8$)**: Min: `0.4776` | Median: `0.8350` | Max: `1.0000`
+- **Separation Margin**: The threshold of `0.45` separates both classes with an empirical margin of `0.1630` between the maximum real deletion (`0.3147`) and the minimum reworded sentence (`0.4776`).
 
 ## 5. Custom Leader/Validator Consensus Architecture (v1.2.0)
 
